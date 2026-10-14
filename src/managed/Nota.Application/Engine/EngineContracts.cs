@@ -243,6 +243,34 @@ public enum AutomationTarget { Volume = 0, Pan = 1, DeviceParam = 2, PluginParam
 /// channel as a track pans, Stereo folds it into the near side.</summary>
 public enum PanLaw { Balance = 0, Stereo = 1 }
 
+/// <summary>One Stereo Map row (specs/008), laid out like native NotaStereoMeasure: what a
+/// track / return / the master sends to the master, averaged over ~300 ms. Balance is on the
+/// pan scale (a mono source panned to p reads p); width = 1 − correlation, clamped 0..1.</summary>
+[StructLayout(LayoutKind.Sequential)]
+public struct StereoMeasure
+{
+    public int TrackId;
+    public float LevelDb;
+    public float Balance;
+    public float Width;
+    public float Correlation;
+    /// <summary>Below −60 dBFS: no cloud is drawn.</summary>
+    public readonly bool Silent => LevelDb < -60f;
+}
+
+/// <summary>What a mix gesture targets (specs/009). Matches NOTA_MIX_*.</summary>
+public enum MixKind { TrackVolume = 0, TrackPan = 1, MasterVolume = 2 }
+
+/// <summary>One parameter a mix gesture records for undo; laid out like native NotaMixTarget.
+/// <see cref="TrackId"/> is ignored for the master volume.</summary>
+[StructLayout(LayoutKind.Sequential)]
+public readonly record struct MixTarget(MixKind Kind, int TrackId)
+{
+    public static MixTarget Volume(int trackId) => new(MixKind.TrackVolume, trackId);
+    public static MixTarget Pan(int trackId) => new(MixKind.TrackPan, trackId);
+    public static MixTarget Master => new(MixKind.MasterVolume, -1);
+}
+
 
 /// <summary>MIDI clip envelope target (M9 follow-up). Velocity scales note velocities;
 /// Volume scales the instrument output during the clip.</summary>

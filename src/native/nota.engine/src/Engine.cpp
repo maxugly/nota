@@ -492,7 +492,8 @@ void Engine::publishRaw(std::shared_ptr<Graph> g) {
 
 void Engine::pushUndo() {
     if (!authoring_) return;
-    undoStack_.push_back(authoring_);          // authoring_ is immutable after publish
+    undoStack_.push_back({authoring_, {}});    // authoring_ is immutable after publish
+    ++undoPushCount_;
     if (undoStack_.size() > kMaxUndoDepth) {
         undoStack_.erase(undoStack_.begin());
         if (undoGroupDepth_ > 0 && undoGroupBase_ > 0) --undoGroupBase_;   // keep the group's anchor
@@ -506,9 +507,16 @@ void Engine::beginUndoGroup() {
 
 void Engine::endUndoGroup() {
     if (undoGroupDepth_ <= 0 || --undoGroupDepth_ > 0) return;
-    // Keep only the first checkpoint the group pushed (the pre-group state).
-    if (undoStack_.size() > undoGroupBase_ + 1)
-        undoStack_.erase(undoStack_.begin() + static_cast<std::ptrdiff_t>(undoGroupBase_ + 1), undoStack_.end());
+    // Collapse the group into its first entry: the pre-group graph (the first snapshot any
+    // entry of the group holds — a mix-only entry holds none) plus all mix changes merged.
+    if (undoStack_.size() > undoGroupBase_ + 1) {
+        auto first = undoStack_.begin() + static_cast<std::ptrdiff_t>(undoGroupBase_);
+        for (auto it = first + 1; it != undoStack_.end(); ++it) {
+            if (!first->graph) first->graph = it->graph;
+            mergeMix(first->mix, it->mix);
+        }
+        undoStack_.erase(first + 1, undoStack_.end());
+    }
 }
 
 void Engine::publish(std::shared_ptr<Graph> g) {
@@ -531,22 +539,162 @@ void Engine::republishWithTrack(int32_t trackId, std::shared_ptr<Track> nt) {
     republishWithTrackRaw(trackId, std::move(nt));
 }
 
+// Undo/redo: a snapshot entry swaps the graph (the current state becomes the opposite
+// stack's target); then its mix changes write their before (undo) / after (redo) values —
+// after the graph, so a restored track gets its value. An entry that changes nothing (all
+// of its tracks gone) is passed over, so one call always does something if it can.
 bool Engine::undo() {
-    if (undoStack_.empty()) return false;
-    redoStack_.push_back(authoring_);          // current state becomes the redo target
-    auto g = undoStack_.back();
-    undoStack_.pop_back();
-    publishRaw(std::move(g));                   // restore without a new checkpoint
-    return true;
+    while (!undoStack_.empty()) {
+        UndoEntry e = std::move(undoStack_.back());
+        undoStack_.pop_back();
+        bool applied = false;
+        redoStack_.push_back({e.graph ? authoring_ : nullptr, e.mix});
+        if (e.graph) { publishRaw(std::move(e.graph)); applied = true; }   // restore without a new checkpoint
+        for (const auto& c : e.mix) applied |= applyMix(c, false);
+        if (applied) return true;
+    }
+    return false;
 }
 
 bool Engine::redo() {
-    if (redoStack_.empty()) return false;
-    undoStack_.push_back(authoring_);
-    auto g = redoStack_.back();
-    redoStack_.pop_back();
-    publishRaw(std::move(g));
+    while (!redoStack_.empty()) {
+        UndoEntry e = std::move(redoStack_.back());
+        redoStack_.pop_back();
+        bool applied = false;
+        undoStack_.push_back({e.graph ? authoring_ : nullptr, e.mix});
+        if (e.graph) { publishRaw(std::move(e.graph)); applied = true; }
+        for (const auto& c : e.mix) applied |= applyMix(c, true);
+        if (applied) return true;
+    }
+    return false;
+}
+
+// --- mix gestures (specs/009) ----------------------------------------------
+
+bool Engine::mixValue(const MixTarget& t, float& v) const {
+    if (t.kind == MixKind::MasterVolume) { v = masterVolume(); return true; }
+    auto tr = findTrackAuthoring(t.trackId);
+    if (!tr) return false;
+    v = t.kind == MixKind::TrackVolume ? tr->volume() : tr->pan();
     return true;
+}
+
+bool Engine::applyMix(const MixChange& c, bool after) {
+    const float v = after ? c.after : c.before;
+    if (c.kind == MixKind::MasterVolume) { setMasterVolume(v); return true; }
+    auto tr = findTrackAuthoring(c.trackId);
+    if (!tr) return false;   // the track is gone: skip quietly
+    if (c.kind == MixKind::TrackVolume) tr->setVolume(v); else tr->setPan(v);
+    return true;
+}
+
+// Fold `later` into `into`: per target the older before, the newer after; a target that
+// ends where it started is no change at all.
+void Engine::mergeMix(std::vector<MixChange>& into, const std::vector<MixChange>& later) {
+    for (const auto& c : later) {
+        auto it = std::find_if(into.begin(), into.end(), [&](const MixChange& m) {
+            return m.kind == c.kind && (c.kind == MixKind::MasterVolume || m.trackId == c.trackId);
+        });
+        if (it == into.end()) into.push_back(c); else it->after = c.after;
+    }
+    into.erase(std::remove_if(into.begin(), into.end(), [](const MixChange& m) { return m.before == m.after; }),
+               into.end());
+}
+
+// --- Stereo Map measurements (specs/008) ------------------------------------
+
+namespace {
+// Level, balance (on the pan scale — the equal-power pan that gives this energy split, so a
+// mono source panned to p reads p), correlation, and width = 1 - correlation (0 for any mono
+// source wherever it's panned, 1 for unrelated or anti-phase material). specs/008 research R2.
+NotaStereoMeasure deriveStereo(int32_t id, float eL, float eR, float eLR) {
+    NotaStereoMeasure m{ id, -200.0f, 0.0f, 0.0f, 0.0f };
+    const double l = std::max(0.0f, eL), r = std::max(0.0f, eR), sum = l + r;
+    if (sum > 1e-20) m.level_db = static_cast<float>(10.0 * std::log10(sum * 0.5));
+    if (sum > 1e-20)
+        m.balance = static_cast<float>(std::atan2(std::sqrt(r), std::sqrt(l)) * (4.0 / 3.14159265358979323846) - 1.0);
+    if (l > 1e-12 && r > 1e-12)
+        m.correlation = static_cast<float>(std::clamp(eLR / std::sqrt(l * r), -1.0, 1.0));
+    m.width = std::clamp(1.0f - m.correlation, 0.0f, 1.0f);
+    return m;
+}
+}
+
+int32_t Engine::stereoMeasures(NotaStereoMeasure* out, int32_t cap) const {
+    int32_t n = 0;
+    auto put = [&](const NotaStereoMeasure& m) { if (out && n < cap) out[n] = m; ++n; };
+    if (authoring_)
+        for (const auto& t : authoring_->tracks)
+            if (t && t->type() != TrackType::Group)
+                put(deriveStereo(t->id(), t->stereoL(), t->stereoR(), t->stereoLR()));
+    put(deriveStereo(kMasterTrackId, masterStereoL_.load(std::memory_order_relaxed),
+                     masterStereoR_.load(std::memory_order_relaxed),
+                     masterStereoLR_.load(std::memory_order_relaxed)));
+    return n;
+}
+
+bool Engine::mixUndoSelfTest() {
+    clearUndoHistory();
+    const float m0 = masterVolume();
+    undoStack_.push_back({ nullptr, { { MixKind::MasterVolume, -1, m0, 0.25f } } });   // a valid step…
+    setMasterVolume(0.25f);
+    undoStack_.push_back({ nullptr, { { MixKind::TrackVolume, 0x7fff0001, 1.0f, 0.5f } } });   // …under a dangling one
+    const bool undid = undo() && masterVolume() == m0 && undoStack_.empty() && redoStack_.size() == 2;
+    const bool redid = redo() && masterVolume() == 0.25f;   // the valid step is on top of redo
+    const bool rest  = !redo() && redoStack_.empty();        // the dangling one applies nothing
+    clearUndoHistory();
+    setMasterVolume(m0);
+    return undid && redid && rest;
+}
+
+int32_t Engine::beginMixGesture(const MixTarget* targets, int32_t count) {
+    if (!targets || count <= 0) return 0;
+    OpenMixGesture g{ nextMixGesture_, {}, undoPushCount_, undoStack_.size() };
+    for (int32_t i = 0; i < count; ++i) {
+        float v = 0.0f;
+        if (mixValue(targets[i], v)) g.targets.push_back({ targets[i].kind, targets[i].trackId, v, v });
+    }
+    if (g.targets.empty()) return 0;
+    if (++nextMixGesture_ <= 0) nextMixGesture_ = 1;
+    mixGestures_.push_back(std::move(g));
+    return mixGestures_.back().handle;
+}
+
+void Engine::endMixGesture(int32_t handle) {
+    auto it = std::find_if(mixGestures_.begin(), mixGestures_.end(),
+                           [&](const OpenMixGesture& g) { return g.handle == handle; });
+    if (it == mixGestures_.end()) return;
+    OpenMixGesture g = std::move(*it);
+    mixGestures_.erase(it);
+    std::vector<MixChange> changes;
+    for (auto& c : g.targets) {
+        float v = 0.0f;
+        if (!mixValue({ c.kind, c.trackId }, v)) continue;   // the track went away mid-gesture
+        if (v == c.before) continue;                          // exact: no net change, no step
+        c.after = v;
+        changes.push_back(c);
+    }
+    if (changes.empty()) return;
+    // Checkpoints pushed during the gesture (automation recording: the lane's creation and
+    // the pre-write state) and this value change are one user action: collapse everything
+    // the gesture stacked into its first entry, as an undo group would, and add the values.
+    if (undoPushCount_ != g.pushCountAtBegin && !undoStack_.empty()) {
+        const size_t base = std::min(g.stackSizeAtBegin, undoStack_.size() - 1);
+        auto first = undoStack_.begin() + static_cast<std::ptrdiff_t>(base);
+        for (auto it = first + 1; it != undoStack_.end(); ++it) {
+            if (!first->graph) first->graph = it->graph;
+            mergeMix(first->mix, it->mix);
+        }
+        undoStack_.erase(first + 1, undoStack_.end());
+        mergeMix(first->mix, changes);
+        return;
+    }
+    undoStack_.push_back({ nullptr, std::move(changes) });
+    if (undoStack_.size() > kMaxUndoDepth) {
+        undoStack_.erase(undoStack_.begin());
+        if (undoGroupDepth_ > 0 && undoGroupBase_ > 0) --undoGroupBase_;
+    }
+    redoStack_.clear();
 }
 
 // --- project pan law (specs/006) -------------------------------------------
@@ -594,6 +742,7 @@ void Engine::clearUndoHistory() {
     // them here frees nothing the audio thread can still be reading.
     undoStack_.clear();
     redoStack_.clear();
+    mixGestures_.clear();   // a gesture can't outlive the history it would land in
     undoGroupDepth_ = 0; undoGroupBase_ = 0;
 }
 

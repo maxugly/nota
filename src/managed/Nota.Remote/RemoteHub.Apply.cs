@@ -81,22 +81,28 @@ public sealed partial class RemoteHub
             // ---- mixer ----------------------------------------------------------
             case "vol":
                 if (!TrackExists(cmd.Id)) break;
-                _engine.BeginAutomationWrite(cmd.Id, AutomationTarget.Volume, -1, -1, "", latch: true);
-                _engine.SetTrackVolume(cmd.Id, (float)Math.Clamp(cmd.V, 0, VolumeMax));
+                MixTouch(c, MixTarget.Volume(cmd.Id), cmd.Phase, () =>   // opened before the automation write
+                {
+                    _engine.BeginAutomationWrite(cmd.Id, AutomationTarget.Volume, -1, -1, "", latch: true);
+                    _engine.SetTrackVolume(cmd.Id, (float)Math.Clamp(cmd.V, 0, VolumeMax));
+                });
                 HoldFader(c, cmd.Id, cmd.Phase);
                 if (cmd.Phase == 2) host.Refresh();
                 break;
             case "pan":
                 if (!TrackExists(cmd.Id)) break;
-                _engine.BeginAutomationWrite(cmd.Id, AutomationTarget.Pan, -1, -1, "", latch: true);
-                _engine.SetTrackPan(cmd.Id, (float)Math.Clamp(cmd.V, -1, 1));
+                MixTouch(c, MixTarget.Pan(cmd.Id), cmd.Phase, () =>
+                {
+                    _engine.BeginAutomationWrite(cmd.Id, AutomationTarget.Pan, -1, -1, "", latch: true);
+                    _engine.SetTrackPan(cmd.Id, (float)Math.Clamp(cmd.V, -1, 1));
+                });
                 if (cmd.Phase == 2) host.Refresh();
                 break;
             case "mute": if (TrackExists(cmd.Id)) { _engine.SetTrackMute(cmd.Id, cmd.On); host.Refresh(); } break;
             case "solo": if (TrackExists(cmd.Id)) { _engine.SetTrackSolo(cmd.Id, cmd.On); host.Refresh(); } break;
             case "arm": if (TrackExists(cmd.Id)) { _engine.SetTrackArmed(cmd.Id, cmd.On); host.Refresh(); } break;
             case "mvol":
-                host.MasterVolume = Math.Clamp(cmd.V, 0, VolumeMax);
+                MixTouch(c, MixTarget.Master, cmd.Phase, () => host.MasterVolume = Math.Clamp(cmd.V, 0, VolumeMax));
                 HoldFader(c, MasterFaderId, cmd.Phase);
                 break;
 
@@ -134,8 +140,34 @@ public sealed partial class RemoteHub
         _heldFaders[faderId] = (c.ConnectionId, ShortName(c.Name), DateTime.UtcNow.Add(FaderHold).Ticks);
     }
 
+    // Undo (specs/009): one step per touch on a volume / pan / master fader — opened by the
+    // touch's first command, closed by its phase-2 command, by the phone going away, or after
+    // FaderHold without a command (a lost finger-up never leaves a gesture open).
+    private readonly Dictionary<(int Conn, MixTarget Target), (int Handle, long Until)> _mixUndo = new();
+
+    private void MixTouch(RemoteClient c, MixTarget target, int phase, Action set)
+    {
+        var key = (c.ConnectionId, target);
+        int handle = _mixUndo.TryGetValue(key, out var open) ? open.Handle : _engine.BeginMixGesture(target);
+        set();
+        if (phase == 2) { _engine.EndMixGesture(handle); _mixUndo.Remove(key); }
+        else _mixUndo[key] = (handle, DateTime.UtcNow.Add(FaderHold).Ticks);
+    }
+
+    private void ExpireMixUndo()
+    {
+        if (_mixUndo.Count == 0) return;
+        long now = DateTime.UtcNow.Ticks;
+        foreach (var kv in _mixUndo.Where(kv => kv.Value.Until < now || !_clients.ContainsKey(kv.Key.Conn)).ToList())
+        {
+            _engine.EndMixGesture(kv.Value.Handle);
+            _mixUndo.Remove(kv.Key);
+        }
+    }
+
     private void ExpireHeldFaders()
     {
+        ExpireMixUndo();
         if (_heldFaders.Count == 0) return;
         long now = DateTime.UtcNow.Ticks;
         foreach (var k in _heldFaders.Where(kv => kv.Value.Until < now || !_clients.ContainsKey(kv.Value.Conn)).Select(kv => kv.Key).ToList())

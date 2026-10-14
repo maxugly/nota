@@ -5,6 +5,8 @@
 // The single MixerView instance is hosted in the window while it's open and detached on close.
 
 using System;
+using Microsoft.Extensions.DependencyInjection;
+using Nota.Application;
 
 namespace Nota.App;
 
@@ -20,7 +22,17 @@ public partial class MainWindow
         if (_mixerWindow is not null) { _mixerWindow.Close(); return; }
         if (_mixer is null) return;
 
-        var win = new MixerWindow(this);
+        // The view (Strips / Stereo Map, specs/008) is a per-user preference.
+        var settings = App.Services.GetRequiredService<ISettingsService>();
+        var view = settings.Current.MixerView == "map" ? MixerViewMode.StereoMap : MixerViewMode.Strips;
+        _mixer.View = view;
+        var win = new MixerWindow(this, view);
+        win.ViewPicked += v =>
+        {
+            if (_mixer is not null) _mixer.View = v;
+            settings.Current.MixerView = v == MixerViewMode.StereoMap ? "map" : "strips";
+            settings.Save();
+        };
         win.EnableMidiLearn(_learn);   // faders/knobs stay MIDI-mappable in the window
         win.WindowClosed += () => { if (_mixer is not null) _mixer.IsVisible = false; _mixerWindow = null; };
         _mixerWindow = win;

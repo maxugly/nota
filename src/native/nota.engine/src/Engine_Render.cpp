@@ -94,6 +94,21 @@ struct PanStage {
     }
 };
 
+// Stereo measurement (specs/008): fold one block's mean L², R², L·R into a track's running
+// averages; `a` is the per-block smoothing step for τ = 0.3 s at this block length.
+inline float stereoBlockStep(int32_t frames, double sr) {
+    return static_cast<float>(1.0 - std::exp(-frames / (0.3 * (sr > 0.0 ? sr : 44100.0))));
+}
+inline void stereoFold(std::atomic<float>& eL, std::atomic<float>& eR, std::atomic<float>& eLR,
+                       double sqL, double sqR, double sLR, int32_t frames, float a) {
+    const double n = frames > 0 ? frames : 1;
+    auto fold = [a](std::atomic<float>& e, double mean) {
+        const float cur = e.load(std::memory_order_relaxed);
+        e.store(cur + a * (static_cast<float>(mean) - cur), std::memory_order_relaxed);
+    };
+    fold(eL, sqL / n); fold(eR, sqR / n); fold(eLR, sLR / n);
+}
+
 // Sort note events by sample offset; at ties, note-offs before note-ons so a
 // same-block same-pitch retrigger releases the old voice before the new one.
 inline bool midiEvLess(const MidiEv& a, const MidiEv& b) {
@@ -1050,7 +1065,7 @@ void Engine::processBlock(float* out, int32_t numFrames) {
 
     const float mv = masterVolume_.load(std::memory_order_relaxed);
     float mpkL = 0.0f, mpkR = 0.0f;
-    double msqL = 0.0, msqR = 0.0;
+    double msqL = 0.0, msqR = 0.0, msLR = 0.0;   // msLR: Stereo Map (specs/008)
     for (int32_t i = 0; i < numFrames; ++i) {
         // Master safety net: a NaN slips straight through std::clamp (every compare
         // with NaN is false, so clamp returns it unchanged) and hits the speakers as
@@ -1066,8 +1081,10 @@ void Engine::processBlock(float* out, int32_t numFrames) {
         const float al = std::fabs(l), ar = std::fabs(r);
         if (al > mpkL) mpkL = al;
         if (ar > mpkR) mpkR = ar;
-        msqL += l * (double)l; msqR += r * (double)r;
+        msqL += l * (double)l; msqR += r * (double)r; msLR += l * (double)r;
     }
+    stereoFold(masterStereoL_, masterStereoR_, masterStereoLR_, msqL, msqR, msLR, numFrames,
+               stereoBlockStep(numFrames, transport_.sampleRate()));
     masterPeakL_.store(mpkL, std::memory_order_relaxed);
     masterPeakR_.store(mpkR, std::memory_order_relaxed);
     masterRmsL_.store(numFrames ? static_cast<float>(std::sqrt(msqL / numFrames)) : 0.0f, std::memory_order_relaxed);
@@ -1112,6 +1129,7 @@ void Engine::mixGraph(Graph* g, float* out, int32_t frames, double blockStart, b
         }
         const double srLaw = transport_.sampleRate() > 0 ? transport_.sampleRate() : 44100.0;
         const float panLawStep = static_cast<float>(1.0 / (0.010 * srLaw));
+        const float stereoA = stereoBlockStep(frames, srLaw);   // Stereo Map averages (specs/008)
 
         // Automation (M9): read-mode block-rate eval — write each active lane's
         // value into its target atomic before the mix reads it. Always runs (also
@@ -1223,7 +1241,7 @@ void Engine::mixGraph(Graph* g, float* out, int32_t frames, double blockStart, b
             const bool audible = !leafMute(t) && (!anySolo || leafSolo(t));
             // Soloing a monitoring (or recording) track must not silence what it listens to.
             const bool feeding = !audible && !leafMute(t) && feedsMonitor(t.id());
-            if (!audible && !capturing && !feeding) { t.setMeter(0, 0, 0, 0); continue; }
+            if (!audible && !capturing && !feeding) { t.setMeter(0, 0, 0, 0); t.stereoFold(0, 0, 0, frames, stereoA); continue; }
             const bool toMix = audible || capturing;   // false: render only for the taps
             // Destination: this leaf's parent group's submix bus, else the master mix.
             const int destSlot = slotOf(t.groupId());
@@ -1250,7 +1268,7 @@ void Engine::mixGraph(Graph* g, float* out, int32_t frames, double blockStart, b
 
             // 1) Render the track's dry stereo (pre-fader) into scratch_.
             if (frozenActive) {
-                if (!playing) { t.setMeter(0, 0, 0, 0); continue; } // frozen sounds only while rolling
+                if (!playing) { t.setMeter(0, 0, 0, 0); t.stereoFold(0, 0, 0, frames, stereoA); continue; } // frozen sounds only while rolling
                 fillFrozen(t, scratch_.data(), frames, blockStart, spb);
             } else {
                 if (t.instrument) {
@@ -1274,7 +1292,7 @@ void Engine::mixGraph(Graph* g, float* out, int32_t frames, double blockStart, b
                 else if (playing && arrangementActive)
                     renderAudioClipsRaw(t.clips, scratch_.data(), frames, blockStart, spb);
                 else
-                    { t.setMeter(0, 0, 0, 0); continue; } // stopped / session-only audio track: nothing to do
+                    { t.setMeter(0, 0, 0, 0); t.stereoFold(0, 0, 0, frames, stereoA); continue; } // stopped / session-only audio track: nothing to do
             }
 
             // 1b) Pre-FX tap (Phase D): if this track feeds a sidechain, capture its
@@ -1332,7 +1350,7 @@ void Engine::mixGraph(Graph* g, float* out, int32_t frames, double blockStart, b
             float* route = routeSlot >= 0 ? routeBusNext_[routeSlot].data() : nullptr;
             const bool tapRec = (recSrc > 0 && t.id() == recSrc);   // internal resampling source
             float pkL = 0.0f, pkR = 0.0f;
-            double sqL = 0.0, sqR = 0.0;
+            double sqL = 0.0, sqR = 0.0, sLR = 0.0;   // sLR: Stereo Map (specs/008)
             int64_t recDropped = 0;
             for (int32_t i = 0; i < frames; ++i) {
                 float l, r;
@@ -1352,9 +1370,15 @@ void Engine::mixGraph(Graph* g, float* out, int32_t frames, double blockStart, b
                 if (ar > pkR) pkR = ar;
                 sqL += l * (double)l;
                 sqR += r * (double)r;
+                sLR += l * (double)r;
             }
             if (recDropped) inputDroppedFrames_.fetch_add(recDropped, std::memory_order_relaxed);
-            if (!toMix) { t.setMeter(0, 0, 0, 0); continue; }
+            if (!toMix) {   // muted / solo-gated: nothing reaches the master, the averages decay
+                t.setMeter(0, 0, 0, 0);
+                t.stereoFold(0.0, 0.0, 0.0, frames, stereoA);
+                continue;
+            }
+            t.stereoFold(sqL, sqR, sLR, frames, stereoA);
             t.setMeter(pkL, pkR,
                        static_cast<float>(std::sqrt(sqL / frames)),
                        static_cast<float>(std::sqrt(sqR / frames)));
@@ -1433,7 +1457,7 @@ void Engine::mixGraph(Graph* g, float* out, int32_t frames, double blockStart, b
             Track& t = *tptr;
             if (t.type() != TrackType::Return) continue;
             const int32_t bus = t.returnIndex();
-            if (bus < 0 || bus >= numReturns || t.mute()) { t.setMeter(0, 0, 0, 0); continue; }
+            if (bus < 0 || bus >= numReturns || t.mute()) { t.setMeter(0, 0, 0, 0); t.stereoFold(0, 0, 0, frames, stereoA); continue; }
 
             std::copy_n(returnBus_[bus].data(), frames * 2, scratch_.data());
             {
@@ -1466,7 +1490,7 @@ void Engine::mixGraph(Graph* g, float* out, int32_t frames, double blockStart, b
             float* route = routeSlot >= 0 ? routeBusNext_[routeSlot].data() : nullptr;
             const bool tapRec = (recSrc > 0 && t.id() == recSrc);   // internal resampling source (a return)
             float pkL = 0.0f, pkR = 0.0f;
-            double sqL = 0.0, sqR = 0.0;
+            double sqL = 0.0, sqR = 0.0, sLR = 0.0;   // sLR: Stereo Map (specs/008)
             int64_t recDropped = 0;
             for (int32_t i = 0; i < frames; ++i) {
                 float l, r;
@@ -1480,8 +1504,10 @@ void Engine::mixGraph(Graph* g, float* out, int32_t frames, double blockStart, b
                 if (ar > pkR) pkR = ar;
                 sqL += l * (double)l;
                 sqR += r * (double)r;
+                sLR += l * (double)r;
             }
             if (recDropped) inputDroppedFrames_.fetch_add(recDropped, std::memory_order_relaxed);
+            t.stereoFold(sqL, sqR, sLR, frames, stereoA);
             t.setMeter(pkL, pkR,
                        static_cast<float>(std::sqrt(sqL / frames)),
                        static_cast<float>(std::sqrt(sqR / frames)));

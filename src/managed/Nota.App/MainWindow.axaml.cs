@@ -18,6 +18,7 @@ using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Microsoft.Extensions.DependencyInjection;
 using Nota.Application;
+using Nota.Application.Editing;
 using Nota.Presentation;
 using System.Runtime.InteropServices;
 
@@ -221,7 +222,11 @@ public partial class MainWindow : Window
         // Thin master volume fader (mockup 1b) — MiniFader instead of a stock Slider. It
         // sits over the master meter inside the MST module, with the gain printed in dB.
         var masterVol = new MiniFader((double)vm.Transport.MasterVolume, 1.5);
-        masterVol.ValueChanged += v => vm.Transport.MasterVolume = v;
+        var masterUndo = new MixGesture(vm.Engine, MixTarget.Master);   // one undo step per drag (specs/009)
+        masterVol.GestureBegin += masterUndo.Begin;
+        masterVol.GestureEnd += masterUndo.End;
+        Action<double> setMaster = v => vm.Transport.MasterVolume = v;
+        masterVol.ValueChanged += v => masterUndo.Change(v, setMaster);
         MasterVolHost.Children.Add(masterVol);
         MidiLearn.Bind(masterVol, MidiTarget.MasterVolume, "Master Volume");
 
@@ -374,6 +379,12 @@ public partial class MainWindow : Window
             GetMasterVolume = () => (float)vm.Transport.MasterVolume,
             SetMasterVolume = v => vm.Transport.MasterVolume = v,
             IsOlderProject = () => _panLawLegacy,
+            // The Stereo Map (specs/008) selects through the arrangement and follows its selection.
+            MapCreated = map =>
+            {
+                map.SelectedTrackId = () => Timeline.SelectedTrackId;
+                map.SelectTrack = id => Timeline.SelectTrackFromOutside(id);
+            },
         };
 
         // Modular: signal-graph view of the selected track (mockup 1a). Follows track

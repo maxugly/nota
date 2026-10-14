@@ -34,6 +34,9 @@ public sealed class Settings
     /// <summary>Show the welcome screen (recent projects launcher) on startup. On by default;
     /// toggled from the welcome screen's "Show on startup" checkbox.</summary>
     public bool ShowWelcomeOnStartup { get; set; } = true;
+    /// <summary>The Mixer window's view: "strips" or "map" (the Stereo Map, specs/008).
+    /// A per-user preference, remembered between openings.</summary>
+    public string MixerView { get; set; } = "strips";
     /// <summary>Record a project version on every save (the History tab). On by default.</summary>
     public bool KeepVersionHistory { get; set; } = true;
     /// <summary>Bars of metronome count-in before Play / Record from stop (0 = off). Set from

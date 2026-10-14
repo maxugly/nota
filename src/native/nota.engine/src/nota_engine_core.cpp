@@ -249,6 +249,29 @@ void nota_engine_undo_group_begin(NotaEngine* e) { if (e) ENG(e)->beginUndoGroup
 void nota_engine_undo_group_end(NotaEngine* e) { if (e) ENG(e)->endUndoGroup(); }
 void nota_engine_clear_undo_history(NotaEngine* e) { if (e) ENG(e)->clearUndoHistory(); }
 
+// ---- Mix undo (009) ---------------------------------------------------------
+
+int32_t nota_mix_gesture_begin(NotaEngine* e, const NotaMixTarget* targets, int32_t count) {
+    if (!e || !targets || count <= 0 || count > 64) return 0;
+    nota::MixTarget t[64];
+    int32_t n = 0;
+    for (int32_t i = 0; i < count; ++i) {
+        const int32_t k = targets[i].kind;
+        if (k < NOTA_MIX_TRACK_VOLUME || k > NOTA_MIX_MASTER_VOLUME) continue;
+        t[n++] = { static_cast<nota::MixKind>(k), targets[i].track_id };
+    }
+    return n > 0 ? ENG(e)->beginMixGesture(t, n) : 0;
+}
+void nota_mix_gesture_end(NotaEngine* e, int32_t handle) { if (e) ENG(e)->endMixGesture(handle); }
+float nota_engine_master_volume(const NotaEngine* e) { return e ? CENG(e)->masterVolume() : 1.0f; }
+int32_t nota_engine_mix_undo_selftest(NotaEngine* e) { return (e && ENG(e)->mixUndoSelfTest()) ? 1 : 0; }
+
+// ---- Stereo measurements (008) ---------------------------------------------
+
+int32_t nota_engine_stereo_measures(const NotaEngine* e, NotaStereoMeasure* out, int32_t cap) {
+    return e ? CENG(e)->stereoMeasures(out, cap < 0 ? 0 : cap) : 0;
+}
+
 // ---- Pan law (006) ---------------------------------------------------------
 
 NotaResult nota_engine_set_pan_law(NotaEngine* e, int32_t law, int32_t checkpoint) {

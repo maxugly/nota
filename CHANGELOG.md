@@ -32,6 +32,19 @@ Entry categories: `Added`, `Changed`, `Fixed`, `Removed`.
   footer shows the project's **PAN LAW** (Stereo / Balance) and switches it during
   playback without a click, as one undo step. Group strips are marked **BAL**: groups keep
   their balance so grouping stays level-transparent.
+- **Undo for volume and pan:** fader, pan and master-volume moves can now be undone and
+  redone (**⌘Z** / **⌘⇧Z**) — from the Mixer, the track headers, the Return and Master
+  rows, the Session mixer, the transport's **MST**, Nota Remote, a MIDI controller and the
+  AI assistant. One move is one step, in the same history as every other edit; a reset or a
+  typed dB value is a step too, and a MIDI controller's movement ends after a 1 s pause.
+  While recording automation, the recorded lane and the value undo together. Automation
+  playback, opening a project and freezing never add steps.
+- **Stereo Map:** the Mixer window has a new **Stereo Map** view (switch it in the window's
+  title bar). Every track, return and the master is a dot at its pan and fader, with a cloud
+  showing where its sound really is, how wide it is and how loud — a mono sound draws a narrow
+  cloud on its dot, a wide pad spans the map — plus the master's phase correlation. Drag a dot
+  to set pan and volume together (one undo step), double-click to centre it, ⌥ double-click
+  for 0 dB; hover for the numbers; click to select the track.
 
 ### Changed
 - **Existing projects keep the Balance pan law** and sound exactly as before; the Mixer

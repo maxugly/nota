@@ -44,7 +44,10 @@ JUCE module; the engine core is JUCE-free.
 ## Project and transport
 
 - **Project**: create / open / save (`.nota`), autosaves, undo/redo for every editing
-  operation.
+  operation — including volume, pan and master-volume moves from any source (Mixer, track
+  headers, Session mixer, **MST**, Nota Remote, a MIDI controller, MCP), one step per move;
+  a recorded automation pass undoes with its value. Mute, solo and sends are not in the
+  history; automation playback, opening a project and freezing add no steps.
 - **New project template**: a new project (and the workspace Nota opens with) starts with an
   instrument track (Nota Synth), an audio track and two returns — **Reverb** (Nota Reverb)
   and **Delay** (Nota Delay), both Wet Only — ready to send to; it opens unmodified, with
@@ -165,6 +168,13 @@ the mixer opens as a separate floating window (**View → Mixer**, ⌘M).
   material and centred tracks sound the same either way. New projects use Stereo; projects
   from earlier versions keep Balance and are marked **Older project**. Switching is
   click-free during playback and one undo step. Groups keep their balance (marked **BAL**).
+- **Stereo Map** (Mixer window, **Strips | Stereo Map** in its title bar): every track,
+  return and the master as a dot at its pan (left–right) and fader (up–down), with a measured
+  cloud — where the sound really sits, how wide it is (from the phase correlation) and how
+  loud — and the master correlation under the map. Drag a dot to set pan and volume at once
+  (one undo step), double-click for centre, ⌥ double-click for 0 dB; hover shows pan, volume,
+  balance, width, correlation and level and flags a source whose image is off its pan; click
+  selects the track. Muted tracks show no cloud, solo dims the rest.
 - **Reordering** by dragging the name row (with an accent insertion line); returns stay
   after regular tracks; the group hierarchy is saved with the project.
 - **Routing**:

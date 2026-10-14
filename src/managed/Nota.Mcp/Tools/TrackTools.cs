@@ -6,6 +6,7 @@
 using System.ComponentModel;
 using ModelContextProtocol.Server;
 using Nota.Application;
+using Nota.Application.Editing;
 
 namespace Nota.Mcp.Tools;
 
@@ -32,10 +33,12 @@ public sealed class TrackTools(IAudioEngine engine, IEngineDispatch dispatch, IA
     public Task SetTrackColor(int trackId, int colorIndex) => Mutate(() => E.SetTrackColorIndex(trackId, colorIndex));
 
     [McpServerTool(Name = "set_track_volume"), Description("Set a track's fader level (0..1 linear).")]
-    public Task SetTrackVolume(int trackId, [Description("Linear gain 0..1")] float volume) => Mutate(() => E.SetTrackVolume(trackId, Math.Clamp(volume, 0f, 1f)));
+    public Task SetTrackVolume(int trackId, [Description("Linear gain 0..1")] float volume)
+        => Mutate(() => MixEdit.Step(E, () => E.SetTrackVolume(trackId, Math.Clamp(volume, 0f, 1f)), MixTarget.Volume(trackId)));   // one undo step
 
     [McpServerTool(Name = "set_track_pan"), Description("Set a track's pan (-1 left .. 0 centre .. +1 right).")]
-    public Task SetTrackPan(int trackId, [Description("-1..1")] float pan) => Mutate(() => E.SetTrackPan(trackId, Math.Clamp(pan, -1f, 1f)));
+    public Task SetTrackPan(int trackId, [Description("-1..1")] float pan)
+        => Mutate(() => MixEdit.Step(E, () => E.SetTrackPan(trackId, Math.Clamp(pan, -1f, 1f)), MixTarget.Pan(trackId)));   // one undo step
 
     [McpServerTool(Name = "set_track_mute"), Description("Mute or unmute a track.")]
     public Task SetTrackMute(int trackId, bool mute) => Mutate(() => E.SetTrackMute(trackId, mute));

@@ -409,10 +409,16 @@ internal static class RemoteTests
         Send(new { t = "off", p = 65 });
         Loudest(e, 30);
 
+        float remoteVol0 = e.TryGetTrackInfo(0, out var rv0) ? rv0.Volume : -1;
         Send(new { t = "vol", id = inst, v = 0.5, ph = 2 });
         Send(new { t = "mute", id = inst, on = true });
         WaitFor(() => e.TryGetTrackInfo(0, out var t) && Math.Abs(t.Volume - 0.5f) < 1e-3 && t.Muted == 1 && host.Refreshes > 0);
         yield return (e.TryGetTrackInfo(0, out var t1) && Math.Abs(t1.Volume - 0.5f) < 1e-3 && t1.Muted == 1, "fader and mute from the phone reach the track");
+        // A phone touch is one undo step (specs/009-mix-param-undo).
+        e.Undo();
+        e.TryGetTrackInfo(0, out var tu);
+        yield return (tu.Volume == remoteVol0, $"undo takes back the phone's fader move ({tu.Volume}, want {remoteVol0})");
+        e.Redo();
         yield return (host.Refreshes > 0, "Nota redraws after a phone edit");
         Send(new { t = "play" });
         WaitFor(() => host.Plays == 1);

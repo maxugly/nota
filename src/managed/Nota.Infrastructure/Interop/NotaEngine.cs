@@ -163,6 +163,16 @@ public sealed partial class NotaEngine : IAudioEngine
     public void SetPanLaw(PanLaw law, bool checkpoint = true)
     { ThrowIfDisposed(); Check(NativeMethods.SetPanLaw(_handle, (int)law, checkpoint ? 1 : 0)); }
 
+    // --- Mix undo (specs/009) --------------------------------------------------
+    public int BeginMixGesture(params MixTarget[] targets)
+    { ThrowIfDisposed(); return targets.Length == 0 ? 0 : NativeMethods.MixGestureBegin(_handle, targets, targets.Length); }
+    public void EndMixGesture(int handle) { ThrowIfDisposed(); if (handle > 0) NativeMethods.MixGestureEnd(_handle, handle); }
+    public float MasterVolume { get { ThrowIfDisposed(); return NativeMethods.MasterVolume(_handle); } }
+    public int GetStereoMeasures(StereoMeasure[] buffer)
+    { ThrowIfDisposed(); return NativeMethods.StereoMeasures(_handle, buffer, buffer.Length); }
+    /// <summary>Device-free: undo/redo pass over a step whose track is gone. Clears the history.</summary>
+    public bool MixUndoSelfTest() { ThrowIfDisposed(); return NativeMethods.MixUndoSelfTest(_handle) != 0; }
+
     // --- Project load (M7-6) -----------------------------------------------
 
     /// <summary>Clears the session to an empty project (used by File → New / Open).</summary>

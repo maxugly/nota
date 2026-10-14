@@ -186,6 +186,21 @@ internal static partial class NativeMethods
     [LibraryImport(Lib, EntryPoint = "nota_engine_pan_law")]
     internal static partial int PanLaw(IntPtr engine);
 
+    [LibraryImport(Lib, EntryPoint = "nota_mix_gesture_begin")]
+    internal static partial int MixGestureBegin(IntPtr engine, [In] MixTarget[] targets, int count);
+
+    [LibraryImport(Lib, EntryPoint = "nota_mix_gesture_end")]
+    internal static partial void MixGestureEnd(IntPtr engine, int handle);
+
+    [LibraryImport(Lib, EntryPoint = "nota_engine_master_volume")]
+    internal static partial float MasterVolume(IntPtr engine);
+
+    [LibraryImport(Lib, EntryPoint = "nota_engine_stereo_measures")]
+    internal static partial int StereoMeasures(IntPtr engine, [Out] StereoMeasure[] rows, int cap);
+
+    [LibraryImport(Lib, EntryPoint = "nota_engine_mix_undo_selftest")]
+    internal static partial int MixUndoSelfTest(IntPtr engine);
+
     [LibraryImport(Lib, EntryPoint = "nota_engine_reset")]
     internal static partial void Reset(IntPtr engine);
 

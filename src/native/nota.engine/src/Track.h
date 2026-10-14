@@ -212,6 +212,27 @@ public:
     float meterRmsL()  const { return mRmsL_.load(std::memory_order_relaxed); }
     float meterRmsR()  const { return mRmsR_.load(std::memory_order_relaxed); }
 
+    // Stereo measurement (specs/008): running averages (τ ≈ 0.3 s) of L², R² and L·R of
+    // the post-fader, post-pan signal — the Stereo Map derives level, balance, width and
+    // correlation from them. Audio thread writes, UI reads; transient like the meter.
+    void setStereo(float l, float r, float lr) {
+        stereoL_.store(l, std::memory_order_relaxed);
+        stereoR_.store(r, std::memory_order_relaxed);
+        stereoLR_.store(lr, std::memory_order_relaxed);
+    }
+    float stereoL()  const { return stereoL_.load(std::memory_order_relaxed); }
+    float stereoR()  const { return stereoR_.load(std::memory_order_relaxed); }
+    float stereoLR() const { return stereoLR_.load(std::memory_order_relaxed); }
+    // Fold one block (sums of L², R², L·R over `frames`) in with step `a` (τ ≈ 0.3 s).
+    void stereoFold(double sqL, double sqR, double sLR, int32_t frames, float a) {
+        const double n = frames > 0 ? frames : 1;
+        auto fold = [a](std::atomic<float>& e, double mean) {
+            const float cur = e.load(std::memory_order_relaxed);
+            e.store(cur + a * (static_cast<float>(mean) - cur), std::memory_order_relaxed);
+        };
+        fold(stereoL_, sqL / n); fold(stereoR_, sqR / n); fold(stereoLR_, sLR / n);
+    }
+
     // Send levels to return buses (M6-1), post-fader. `bus` is a return slot
     // 0..kMaxReturns-1. Atomic (continuous UI control, like the fader).
     void  setSend(int32_t bus, float level) {
@@ -308,6 +329,7 @@ private:
     std::atomic<float> mPeakR_{0.0f};
     std::atomic<float> mRmsL_{0.0f};
     std::atomic<float> mRmsR_{0.0f};
+    std::atomic<float> stereoL_{0.0f}, stereoR_{0.0f}, stereoLR_{0.0f};   // specs/008
     std::atomic<float> send_[kMaxReturns] = {};  // per-return send levels (0 default)
     int32_t            returnIndex_ = -1;         // >=0 for return tracks
     int32_t            groupId_ = -1;             // parent Group track id, or -1 (top-level)

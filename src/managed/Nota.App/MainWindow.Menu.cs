@@ -66,6 +66,11 @@ public partial class MainWindow
         if (_deviceChain?.IsVisible == true && Timeline.SelectedTrackId > 0)
             _deviceChain.Show(Timeline.SelectedTrackId); // reflect device-chain edits
         ReloadEditorNotes();                             // reflect clip/note edits
+        // Volume / pan / master steps (specs/009): the master volume lives on the view model
+        // (MST, Master row, Mixer and Remote follow it), the track strips in the Mixer rebuild.
+        if (_vm is { } vm && Math.Abs(vm.Transport.MasterVolume - Engine.MasterVolume) > 1e-6)
+            vm.Transport.MasterVolume = Engine.MasterVolume;
+        if (_mixer?.IsVisible == true) _mixer.Refresh();
     }
 
     private void OnMenuImport(object? sender, EventArgs e) => _ = DoImportAsync();

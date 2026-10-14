@@ -1229,6 +1229,14 @@ public sealed partial class ArrangementView : UserControl
             ItemDropped?.Invoke(items[i], i == 0 ? trackId : -1, beat);
         e.Handled = true;
     }
+    /// <summary>Select a track from another view (the Stereo Map, specs/008): the same as a
+    /// header click — the device panel and the other views follow.</summary>
+    public void SelectTrackFromOutside(int trackId)
+    {
+        Select(trackId, -1);
+        TrackSelected?.Invoke(trackId);
+    }
+
     internal void Select(int trackId, int clipIndex, bool keepTrackSet = false)
     {
         if (HasTimeSelection) ClearTimeSelection();   // clip- and time-selection are exclusive (1.2.5)
@@ -1845,9 +1853,15 @@ public sealed partial class ArrangementView : UserControl
         };
         void ShowDb(double v) => db.Text = VolumeDbText(v);
         ShowDb(t.Volume);
-        fader.ValueChanged += v => { _engine?.SetTrackVolume(volTrackId, (float)v); ShowDb(v); };
+        // One undo step per drag / reset (specs/009): opened before the automation write so a
+        // recorded lane and the value undo together, closed after it.
+        var volUndo = _engine is { } ve ? new MixGesture(ve, MixTarget.Volume(volTrackId)) : null;
+        fader.GestureBegin += () => volUndo?.Begin();
+        Action<double> setHdrVol = v => _engine?.SetTrackVolume(volTrackId, (float)v);
+        fader.ValueChanged += v => { Change(volUndo, v, setHdrVol); ShowDb(v); };
         fader.GestureBegin += () => _engine?.BeginAutomationWrite(volTrackId, AutomationTarget.Volume, -1, -1, "");
         fader.GestureEnd   += () => _engine?.EndAutomationWrite(volTrackId, AutomationTarget.Volume, -1, -1, "");
+        fader.GestureEnd   += () => volUndo?.End();
         _volFaders[t.Id] = fader; _volDb[t.Id] = db;
 
         var volCell = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
@@ -1857,9 +1871,13 @@ public sealed partial class ArrangementView : UserControl
         volCell.Children.Add(db);
 
         var pan = new PanBar(t.Pan) { VerticalAlignment = VerticalAlignment.Center };
-        pan.PanChanged  += p => _engine?.SetTrackPan(volTrackId, (float)p);
+        var panUndo = _engine is { } pe ? new MixGesture(pe, MixTarget.Pan(volTrackId)) : null;
+        pan.GestureBegin += () => panUndo?.Begin();
+        Action<double> setHdrPan = p => _engine?.SetTrackPan(volTrackId, (float)p);
+        pan.PanChanged  += p => Change(panUndo, p, setHdrPan);
         pan.GestureBegin += () => _engine?.BeginAutomationWrite(volTrackId, AutomationTarget.Pan, -1, -1, "");
         pan.GestureEnd   += () => _engine?.EndAutomationWrite(volTrackId, AutomationTarget.Pan, -1, -1, "");
+        pan.GestureEnd   += () => panUndo?.End();
         _panBars[t.Id] = pan;
 
         var volRow = new Grid { ColumnDefinitions = new ColumnDefinitions("2*,*"), ColumnSpacing = 6, Margin = new Thickness(0, 6, 0, 0) };
@@ -2411,6 +2429,13 @@ public sealed partial class ArrangementView : UserControl
     }
 
     // ---- Return / Master pinned footer -----------------------------------
+    // A value from a control: inside its open undo gesture just set, otherwise a one-off step
+    // (specs/009); no engine (design-time) → just set.
+    private static void Change(MixGesture? undo, double value, Action<double> set)
+    {
+        if (undo is null) set(value); else undo.Change(value, set);
+    }
+
     private void RebuildFooterHeaders()
     {
         _footerHeaders.Children.Clear();
@@ -2463,7 +2488,11 @@ public sealed partial class ArrangementView : UserControl
         };
         db = dbText;
         fader = new MiniFader(volume) { VerticalAlignment = VerticalAlignment.Center, Default = 1.0 };
-        fader.ValueChanged += v => { setVolume(v); dbText.Text = VolumeDbText(v); };
+        // One undo step per drag / reset (specs/009): the master row targets the master volume.
+        var undo = _engine is { } ue ? new MixGesture(ue, masterSpine ? MixTarget.Master : MixTarget.Volume(trackId)) : null;
+        fader.GestureBegin += () => undo?.Begin();
+        fader.GestureEnd   += () => undo?.End();
+        fader.ValueChanged += v => { Change(undo, v, setVolume); dbText.Text = VolumeDbText(v); };
 
         var row = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), RowDefinitions = new RowDefinitions("*,*") };
         Grid.SetColumn(name, 0);

@@ -18,8 +18,12 @@ using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Nota.Application;
+using Nota.Application.Editing;
 
 namespace Nota.App;
+
+/// <summary>The Mixer window's two views (specs/008).</summary>
+public enum MixerViewMode { Strips, StereoMap }
 
 public sealed class MixerView : UserControl
 {
@@ -62,10 +66,20 @@ public sealed class MixerView : UserControl
     private PanLaw? _shownLaw;
     private bool _shownOlder;
 
+    // Strips or the Stereo Map beside a narrower strip column (specs/008). The strips scroller
+    // is one instance moved between the two layouts.
+    private readonly ScrollViewer _stripsScroller;
+    private readonly ContentControl _main = new();
+    private MixerViewMode _view = MixerViewMode.Strips;
+    /// <summary>The Stereo Map, created the first time the view is shown.</summary>
+    public StereoMapView? Map { get; private set; }
+    /// <summary>Called once when the map is created, to wire its callbacks.</summary>
+    public Action<StereoMapView>? MapCreated { get; set; }
+
     public MixerView(IAudioEngine engine)
     {
         _engine = engine;
-        var scroller = new ScrollViewer
+        _stripsScroller = new ScrollViewer
         {
             Content = _row,
             HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
@@ -75,8 +89,38 @@ public sealed class MixerView : UserControl
         var footer = Footer();
         DockPanel.SetDock(footer, Dock.Bottom);
         dock.Children.Add(footer);
-        dock.Children.Add(scroller);
+        dock.Children.Add(_main);
         Content = dock;
+        ApplyView();
+    }
+
+    public MixerViewMode View
+    {
+        get => _view;
+        set { if (_view == value) return; _view = value; ApplyView(); }
+    }
+
+    private void ApplyView()
+    {
+        // Detach the scroller from whichever layout held it before re-parenting.
+        if (_stripsScroller.Parent is Panel p) p.Children.Remove(_stripsScroller);
+        else if (_stripsScroller.Parent is ContentControl c) c.Content = null;
+        if (Map?.Parent is Panel mp) mp.Children.Remove(Map);
+        _main.Content = null;
+
+        if (_view == MixerViewMode.Strips)
+        {
+            _stripsScroller.MaxWidth = double.PositiveInfinity;
+            _main.Content = _stripsScroller;
+            return;
+        }
+        if (Map is null) { Map = new StereoMapView(_engine) { MinWidth = 520 }; MapCreated?.Invoke(Map); }
+        _stripsScroller.MaxWidth = 440;
+        var grid = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), ColumnSpacing = 8, Margin = new Thickness(8) };
+        grid.Children.Add(Map);
+        Grid.SetColumn(_stripsScroller, 1);
+        grid.Children.Add(_stripsScroller);
+        _main.Content = grid;
     }
 
     public void Refresh()
@@ -398,13 +442,19 @@ public sealed class MixerView : UserControl
     private Control PanRow(int id, float pan, bool isGroup = false)
     {
         var knob = new PanKnob(pan);
-        knob.PanChanged += p => _engine.SetTrackPan(id, (float)p);
+        // One undo step per gesture (specs/009); opened before the automation write so a
+        // recorded lane and the value undo together, closed after it.
+        var undo = new MixGesture(_engine, MixTarget.Pan(id));
+        knob.GestureBegin += undo.Begin;
+        Action<double> setPan = p => _engine.SetTrackPan(id, (float)p);
+        knob.PanChanged += p => undo.Change(p, setPan);
         if (id > 0)   // M9-C: record pan moves (master pan isn't an automation target)
         {
             knob.GestureBegin += () => _engine.BeginAutomationWrite(id, AutomationTarget.Pan, -1, -1, "");
             knob.GestureEnd   += () => _engine.EndAutomationWrite(id, AutomationTarget.Pan, -1, -1, "");
             MidiLearn.Bind(knob, MidiTarget.TrackPan(id), "Track Pan");
         }
+        knob.GestureEnd += undo.End;
         Control label = Mono("PAN", TextTertiary);
         if (isGroup)   // groups keep their unity-centre balance whatever the project law (specs/006)
         {
@@ -436,13 +486,21 @@ public sealed class MixerView : UserControl
         ToolTip.SetTip(dbNum, "Set the gain — drag, or double-click to type");
         void SetVolume(double v) { if (id < 0) SetMasterVolume?.Invoke((float)v); else _engine.SetTrackVolume(id, (float)v); }
         if (id < 0) { _masterFader = fader; _masterDb = dbNum; }
-        fader.ValueChanged += v => { SetVolume(v); dbNum.Value = LinToDb(v); };
-        dbNum.ValueChanged += d => { double v = DbToLin(d); SetVolume(v); fader.SetValueExternal(v); };
+        // One undo step per drag of the fader or the dB number, and per reset / typed value
+        // (specs/009). Opened before the automation write, closed after it.
+        var undo = new MixGesture(_engine, id < 0 ? MixTarget.Master : MixTarget.Volume(id));
+        fader.GestureBegin += undo.Begin;
+        dbNum.GestureBegin += undo.Begin;
+        Action<double> setVol = SetVolume;
+        fader.ValueChanged += v => { undo.Change(v, setVol); dbNum.Value = LinToDb(v); };
+        dbNum.ValueChanged += d => { double v = DbToLin(d); undo.Change(v, setVol); fader.SetValueExternal(v); };
         if (id > 0)   // M9-C: record volume moves (master volume isn't a track target)
         {
             fader.GestureBegin += () => _engine.BeginAutomationWrite(id, AutomationTarget.Volume, -1, -1, "");
             fader.GestureEnd   += () => _engine.EndAutomationWrite(id, AutomationTarget.Volume, -1, -1, "");
         }
+        fader.GestureEnd += undo.End;
+        dbNum.GestureEnd += undo.End;
         MidiLearn.Bind(fader, id > 0 ? MidiTarget.TrackVolume(id) : MidiTarget.MasterVolume, id > 0 ? "Track Volume" : "Master Volume");
         db = dbNum;
 

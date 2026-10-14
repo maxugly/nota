@@ -14,6 +14,7 @@ using Avalonia.Controls.Primitives;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Nota.Application;
+using Nota.Application.Editing;
 using Nota.Presentation;
 
 namespace Nota.App;
@@ -114,7 +115,11 @@ public sealed partial class SessionView
             {
                 int id = c.TrackId;
                 var pan = new PanBar(ti.Pan) { VerticalAlignment = VerticalAlignment.Center };   // draws its own C / 12L readout
-                pan.PanChanged += p => _engine.SetTrackPan(id, (float)p);
+                var panUndo = new MixGesture(_engine, MixTarget.Pan(id));   // one undo step per drag (specs/009)
+                pan.GestureBegin += panUndo.Begin;
+                pan.GestureEnd += panUndo.End;
+                Action<double> setPan = p => _engine.SetTrackPan(id, (float)p);
+                pan.PanChanged += p => panUndo.Change(p, setPan);
                 panRow = FaderRow(pan, ReadoutText());
             }
             else panRow = new Border { Height = FaderRowH };
@@ -123,12 +128,15 @@ public sealed partial class SessionView
             var vol = new MiniFader(vol0, 1.5) { Default = 1.0 };
             var db = ReadoutText();
             void ShowDb() => db.Text = vol.Value <= 1e-4 ? "−∞" : NotaNum.Db(AudioMath.LinToDb(vol.Value), signed: true);
-            vol.ValueChanged += v =>
+            var volUndo = new MixGesture(_engine, hasTrack ? MixTarget.Volume(c.TrackId) : MixTarget.Master);
+            vol.GestureBegin += volUndo.Begin;
+            vol.GestureEnd += volUndo.End;
+            Action<double> setVol = v =>
             {
                 if (hasTrack) _engine.SetTrackVolume(c.TrackId, (float)v);
                 else SetMasterVolume?.Invoke((float)v);
-                ShowDb();
             };
+            vol.ValueChanged += v => { volUndo.Change(v, setVol); ShowDb(); };
             ShowDb();
 
             var mL = new MeterLine(); var mR = new MeterLine();

@@ -17,6 +17,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Nota.Application;
+using Nota.Application.Editing;
 
 namespace Nota.App;
 
@@ -26,6 +27,15 @@ public sealed class MidiLearnService
     private const float RackGainMax = 2.0f; // rack out / chain gain travel (matches the rack faders)
 
     private readonly IAudioEngine _engine;
+    // One undo step per controller movement on a mapped volume / pan target, ended by a 1 s
+    // pause (specs/009); the pause is checked on every Tick.
+    private static readonly TimeSpan MixPause = TimeSpan.FromSeconds(1);
+    private readonly Dictionary<MixTarget, MixMovement> _mixUndo = new();
+    private void MixTouch(MixTarget target, Action set)
+    {
+        if (!_mixUndo.TryGetValue(target, out var m)) _mixUndo[target] = m = new MixMovement(_engine, target, MixPause);
+        m.Touch(set, Environment.TickCount64);
+    }
     private readonly ILogSink? _log;
     private readonly List<MidiMapping> _mappings = new();
     private readonly int[] _buf = new int[256 * 4];   // reused each tick — up to 256 events
@@ -242,6 +252,8 @@ public sealed class MidiLearnService
 
     public void Tick()
     {
+        long nowMs = Environment.TickCount64;
+        foreach (var m in _mixUndo.Values) m.Poll(nowMs);   // end controller movements after their pause
         int n = _engine.PollMidiControlEvents(_buf);
         EventCount += n;
         for (int i = 0; i < n; i++)
@@ -345,9 +357,16 @@ public sealed class MidiLearnService
                 _engine.MidiEffectSetParam(t.TrackId, t.DeviceIndex, t.ParamIndex, (float)(min + outv * (max - min)));
                 break;
             }
-            case MidiTargetKind.TrackVolume: _engine.SetTrackVolume(t.TrackId, (float)(outv * VolumeMax)); break;
-            case MidiTargetKind.MasterVolume: _engine.SetMasterVolume((float)(outv * VolumeMax)); break;
-            case MidiTargetKind.TrackPan: _engine.SetTrackPan(t.TrackId, (float)(outv * 2.0 - 1.0)); break;
+            // Volume / pan: one undo step per movement, ended by a 1 s pause (specs/009).
+            case MidiTargetKind.TrackVolume:
+                MixTouch(MixTarget.Volume(t.TrackId), () => _engine.SetTrackVolume(t.TrackId, (float)(outv * VolumeMax)));
+                break;
+            case MidiTargetKind.MasterVolume:
+                MixTouch(MixTarget.Master, () => _engine.SetMasterVolume((float)(outv * VolumeMax)));
+                break;
+            case MidiTargetKind.TrackPan:
+                MixTouch(MixTarget.Pan(t.TrackId), () => _engine.SetTrackPan(t.TrackId, (float)(outv * 2.0 - 1.0)));
+                break;
             case MidiTargetKind.RackVolume:
                 if (t.DeviceIndex < 0) _engine.RackSetVolume(t.TrackId, (float)(outv * RackGainMax));
                 else _engine.RackDevSetVolume(t.TrackId, t.DeviceIndex, (float)(outv * RackGainMax));

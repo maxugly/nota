@@ -833,6 +833,20 @@ public interface IAudioEngine : IDisposable
     /// step (project load, the new-project baseline). No-op if unchanged.</summary>
     void SetPanLaw(PanLaw law, bool checkpoint = true);
 
+    // --- Mix undo (specs/009) --------------------------------------------
+    /// <summary>Starts a gesture on volume / pan / master volume: their values now are what
+    /// undo returns to. Returns a handle (0 = no valid target).</summary>
+    int BeginMixGesture(params MixTarget[] targets);
+    /// <summary>Ends the gesture: one undo step for whatever it changed (none → no step).</summary>
+    void EndMixGesture(int handle);
+    /// <summary>The engine's master volume (linear) — follows undo/redo.</summary>
+    float MasterVolume { get; }
+
+    // --- Stereo Map (specs/008) ------------------------------------------
+    /// <summary>Fills <paramref name="buffer"/> with one row per non-group track (track order)
+    /// and the master last; returns the total row count (grow the buffer if larger).</summary>
+    int GetStereoMeasures(StereoMeasure[] buffer);
+
     // --- Project load (M7-6) -----------------------------------------------
     void Reset();
     int TrackInstrumentKind(int trackId);

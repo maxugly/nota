@@ -70,6 +70,17 @@ using MonitorQueue = SpscRingBuffer<InputFrame, 1u << 14>; // input thread -> au
 // For CC, number is the controller and value its 0..127 data; for notes, number
 // is the pitch and value the velocity. The engine still routes notes to instruments.
 struct ControlEvent { int32_t kind; int32_t channel; int32_t number; int32_t value; };
+
+// Mix undo (specs/009): volume / pan / master volume live in atomics outside the graph, so
+// their undo steps carry values instead of a snapshot. They share one history with the
+// structural snapshots (UndoEntry), which keeps the order of all edits.
+enum class MixKind : int32_t { TrackVolume = 0, TrackPan = 1, MasterVolume = 2 };
+struct MixTarget { MixKind kind; int32_t trackId; };          // trackId ignored for MasterVolume
+struct MixChange { MixKind kind; int32_t trackId; float before; float after; };
+struct UndoEntry {
+    std::shared_ptr<Graph> graph;   // the state to restore; null for a mix-only step
+    std::vector<MixChange> mix;     // empty for a structural step; one change per target
+};
 using ControlEventQueue = SpscRingBuffer<ControlEvent, 1024>;
 
 class Engine {
@@ -988,8 +999,9 @@ public:
     // previous authoring_ is already a complete restore point. Undo/redo just
     // swap the authoring/live pointer between retained snapshots (audio sample
     // buffers are shared via shared_ptr, so a snapshot costs only metadata).
-    // Scope: structural graph edits. Atomic params (volume/pan/mute/bypass/
-    // device params) and transport live outside the Graph and are not covered.
+    // Scope: structural graph edits, plus volume / pan / master volume steps made through
+    // mix gestures (specs/009). Mute, solo, sends, bypass, device params and the transport
+    // live outside the Graph and are not covered.
     bool undo();
     bool redo();
     bool canUndo() const { return !undoStack_.empty(); }
@@ -1003,6 +1015,23 @@ public:
     // Forget the undo/redo history: the current state becomes the baseline (a freshly
     // built default project). Message thread only.
     void clearUndoHistory();
+
+    // --- mix gestures (specs/009) ---
+    // begin records the targets' values; end pushes ONE undo step with the values that
+    // changed (none → no step), merged into a structural checkpoint pushed meanwhile
+    // (automation recording). The plain setters never record. Message thread only.
+    int32_t beginMixGesture(const MixTarget* targets, int32_t count);   // handle > 0, or 0
+    void    endMixGesture(int32_t handle);                               // unknown handle: no-op
+    float   masterVolume() const { return masterVolume_.load(std::memory_order_relaxed); }
+    // Device-free: a mix step for a track that no longer exists is passed over — undo/redo
+    // continue with the next step (FR-010; unreachable through the public edits, which keep
+    // a removal above the steps of its track). Clears the history.
+    bool    mixUndoSelfTest();
+
+    // --- Stereo Map measurements (specs/008) ---
+    // Rows for every non-group track (track order) and the master, derived from the running
+    // L², R², L·R averages. Returns the total row count; fills up to `cap`. Message thread.
+    int32_t stereoMeasures(NotaStereoMeasure* out, int32_t cap) const;
 
     // --- project pan law (specs/006) ---
     // Graph-level, so undo/redo restore it. checkpoint = false for load / the new-project
@@ -1266,10 +1295,17 @@ private:
     std::atomic<int64_t>       previewScopeW_{0};                   // samples written so far
     std::list<std::pair<std::string, std::shared_ptr<SampleBuffer>>> auditionCache_;   // MRU first
 
-    // Undo/redo snapshot stacks (M6-6). Hold retained Graph snapshots; entries
-    // are cheap (metadata only — sample buffers are shared via shared_ptr).
-    std::vector<std::shared_ptr<Graph>> undoStack_;
-    std::vector<std::shared_ptr<Graph>> redoStack_;
+    // Undo/redo stacks (M6-6, specs/009). Entries hold retained Graph snapshots (cheap —
+    // sample buffers are shared via shared_ptr) and/or mix value changes.
+    std::vector<UndoEntry> undoStack_;
+    std::vector<UndoEntry> redoStack_;
+    uint64_t undoPushCount_ = 0;     // bumped by every structural checkpoint (gesture merge)
+    struct OpenMixGesture { int32_t handle; std::vector<MixChange> targets; uint64_t pushCountAtBegin; size_t stackSizeAtBegin; };
+    std::vector<OpenMixGesture> mixGestures_;   // message thread; `before` filled at begin
+    int32_t nextMixGesture_ = 1;
+    bool mixValue(const MixTarget& t, float& v) const;            // current value; false = gone
+    bool applyMix(const MixChange& c, bool after);                // write before/after; false = gone
+    static void mergeMix(std::vector<MixChange>& into, const std::vector<MixChange>& later);
     static constexpr size_t kMaxUndoDepth = 128;
     int32_t undoGroupDepth_ = 0;     // open beginUndoGroup() calls
     size_t  undoGroupBase_  = 0;     // undoStack_ size when the outermost group began
@@ -1279,6 +1315,8 @@ private:
     std::atomic<float> masterPeakR_{0.0f};
     std::atomic<float> masterRmsL_{0.0f};
     std::atomic<float> masterRmsR_{0.0f};
+    // Master stereo measurement (specs/008): running L², R², L·R after the master volume.
+    std::atomic<float> masterStereoL_{0.0f}, masterStereoR_{0.0f}, masterStereoLR_{0.0f};
     std::atomic<bool>  recording_{false};
     std::atomic<int32_t> xruns_{0};           // device dropouts since launch (M7-8)
     std::atomic<float>   cpuLoad_{0.0f};      // smoothed RT DSP load 0..1 (Phase 11)
