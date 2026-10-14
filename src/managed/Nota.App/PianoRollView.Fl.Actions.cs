@@ -178,7 +178,9 @@ public sealed partial class PianoRollView
             if (ctrl && !alt && e.Key == Key.A) { _o.FlSelectAll(); return true; }
             if (ctrl && !alt && e.Key == Key.G) { _o.FlGlue(); return true; }
             if (ctrl && !alt && e.Key == Key.L) { _o.FlLegato(); return true; }
-            if (ctrl && e.Key == Key.Q) { _o.FlQuickQuantize(); return true; }
+            // FL-26: Quick Quantize is Ctrl/Cmd+Opt+Q (Ctrl+Alt+Q on Windows);
+            // plain Ctrl+Q is not a FL binding. Alt+Q opens the Quantize dialog.
+            if (ctrl && alt && e.Key == Key.Q) { _o.FlQuickQuantize(); return true; }
             if (ctrl && (e.Key == Key.Up || e.Key == Key.Down)) { _o.MoveSelection(e.Key == Key.Up ? 12 : -12, 0); return true; }
             if (!ctrl && shift && e.Key == Key.I) { _o.FlInvertSelection(); return true; }
             if (!ctrl && !alt && e.Key == Key.Back) { _o.FlToggleSnap(); return true; }

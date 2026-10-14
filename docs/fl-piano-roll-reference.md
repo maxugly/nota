@@ -143,10 +143,41 @@ Two distinct tool families — keep them separate in the port:
 
 ### Tools → Built-in (transform)
 `Riff machine (Alt+E)` · `Generate chord progression… (Alt+P)` · `Quick legato (Ctrl+L)` ·
-`Articulate (Alt+L)` · `Quick quantize (Ctrl+Q)` · `Quick quantize start times (Shift+Q)` ·
+`Articulate (Alt+L)` · `Quick quantize (Ctrl+Alt+Q)` · `Quick quantize start times (Shift+Q)` ·
 `Quantize (Alt+Q)` · `Quick chop (Ctrl+U)` · `Chop (Alt+U)` · `Glue (Ctrl+G)` ·
 `Arpeggiate (Alt+A)` · `Strum (Alt+S)` · `Flam (Alt+F)` · `Claw machine (Alt+W)` ·
 `Limit (Alt+K)` · `Flip (Alt+Y)` · `Randomize (Alt+R)` · `Scale levels (Alt+X)` · `LFO (Alt+O)`.
+
+### Verified piano-roll bindings (from `basics_shortcuts.htm`)
+
+Authoritative — FL's own shortcut table. FL writes `Ctrl/Cmd` for Ctrl-on-Windows /
+Cmd-on-macOS, and `Opt` for Alt/Option, so **`Ctrl+Opt+X` is `Ctrl+Alt+X` on
+Windows**. Verified against the menu page as well; where the two disagreed, this
+table wins.
+
+| Binding | Action | In Nota |
+|---|---|---|
+| `Ctrl+Alt+Q` | Quick Quantize | ✅ (was wrongly `Ctrl+Q`; fixed) |
+| `Ctrl+Alt+U`? | — | FL binds Quick Chop to `Ctrl+U`, Chop dialog to `Alt+U` |
+| `Ctrl+L` | Quick legato | ✅ |
+| `Ctrl+G` | Glue | ✅ |
+| `Ctrl+B` | Duplicate to the right | ✅ |
+| `Ctrl+D` | Deselect | ✅ |
+| `Ctrl+A` | Select all | ✅ |
+| `Shift+I` | Invert selection | ✅ |
+| `Shift+4` | Horizontal zoom, **show all** | ✅ (named "Zoom to fit") |
+| `Shift+5` | Zoom to selection | ✅ |
+| `Ctrl+U` | Quick Chop | ❌ not implemented |
+| `Alt+Q` | Quantize dialog | ❌ not implemented |
+| `Alt+U` | Chop dialog | ❌ not implemented |
+| `Shift+Q` | Quick quantize **Clip start times** | ❌ not implemented |
+| `Shift+C` / `Shift+1..3` / `PgUp/PgDn` | tool select / zoom levels / zoom | `Shift+1..3` and `PgUp/PgDn` ✅ |
+| **Backspace** | **Toggle Line/None snap** | ⚠️ Nota has an on/off boolean instead |
+| `Alt` | Bypass snap (hold) | ✅ |
+
+**Notable:** in the piano roll FL's Backspace **cycles Line ↔ None**, it is not an
+enable/disable toggle. Nota models it as a boolean on/off, which will need revisiting
+when `Line` gets its distinct resolution behaviour.
 
 ### Tools → Scripts
 `Run last script again (Ctrl+Alt+Y)` · `Open script folder…` · then one entry per
