@@ -28,3 +28,8 @@ cmake_install.cmake
 # Nota project bundles created during testing
 *.nota/
 dist/
+
+# Local scratch — screenshots, offline reference material, spec workspace
+# Must stay untracked: junk/workspace is itself a nested git repo, which would
+# otherwise be staged as an embedded gitlink.
+/junk/
