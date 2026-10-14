@@ -83,6 +83,14 @@ public static class ProjectMigrations
         // v19 -> v20: audio clips gain an ADSR amplitude shape (AudioClipDto.Adsr). Absent in
         // v19 documents; null = identity (full length, full level) matches old behaviour — no-op.
         new Migration(19, _ => { }),
+        // v20 -> v21: projects gain a pan law (specs/006). Every earlier project mixed with the
+        // balance law, so the step writes mixer = { panLaw: "balance", panLawLegacy: true } when
+        // `mixer` is absent (keeps an existing object untouched).
+        new Migration(20, root =>
+        {
+            if (root["mixer"] is null)
+                root["mixer"] = new JsonObject { ["panLaw"] = "balance", ["panLawLegacy"] = true };
+        }),
     };
 
     /// <summary>Migrates <paramref name="root"/> up to <see cref="ProjectService.CurrentFormatVersion"/>

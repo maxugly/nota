@@ -159,6 +159,12 @@ the mixer opens as a separate floating window (**View → Mixer**, ⌘M).
   pasted tracks land after the selected track, in its group.
 - **Per track**: volume, pan (bipolar bar), mute, solo, arm (ready to record).
   Double-click resets to the default.
+- **Pan law** (per project, in the Mixer footer: **PAN LAW** Stereo / Balance): under
+  Stereo, panning a stereo track or return moves its whole image — at full pan both
+  channels play from one side; under Balance the opposite channel fades out. Mono
+  material and centred tracks sound the same either way. New projects use Stereo; projects
+  from earlier versions keep Balance and are marked **Older project**. Switching is
+  click-free during playback and one undo step. Groups keep their balance (marked **BAL**).
 - **Reordering** by dragging the name row (with an accent insertion line); returns stay
   after regular tracks; the group hierarchy is saved with the project.
 - **Routing**:

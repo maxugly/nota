@@ -373,6 +373,7 @@ public partial class MainWindow : Window
             IsVisible = false,
             GetMasterVolume = () => (float)vm.Transport.MasterVolume,
             SetMasterVolume = v => vm.Transport.MasterVolume = v,
+            IsOlderProject = () => _panLawLegacy,
         };
 
         // Modular: signal-graph view of the selected track (mockup 1a). Follows track

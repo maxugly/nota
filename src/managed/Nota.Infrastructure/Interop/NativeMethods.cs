@@ -180,6 +180,12 @@ internal static partial class NativeMethods
     [LibraryImport(Lib, EntryPoint = "nota_engine_clear_undo_history")]
     internal static partial void ClearUndoHistory(IntPtr engine);
 
+    [LibraryImport(Lib, EntryPoint = "nota_engine_set_pan_law")]
+    internal static partial NotaResult SetPanLaw(IntPtr engine, int law, int checkpoint);
+
+    [LibraryImport(Lib, EntryPoint = "nota_engine_pan_law")]
+    internal static partial int PanLaw(IntPtr engine);
+
     [LibraryImport(Lib, EntryPoint = "nota_engine_reset")]
     internal static partial void Reset(IntPtr engine);
 

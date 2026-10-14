@@ -6,6 +6,7 @@
 // "Reverb" and "Delay" — so a user can play and send at once. Built from the same
 // structural edits as adding tracks by hand, then made the undo baseline so the
 // template is the starting point rather than a stack of undoable edits.
+// New projects use the Stereo pan law (specs/006-stereo-pan-law); older projects keep Balance.
 
 namespace Nota.Infrastructure;
 
@@ -28,6 +29,7 @@ public static class ProjectTemplate
         AddReturn(engine, "Reverb", ReverbKind, ReverbWetOnly);
         AddReturn(engine, "Delay", DelayKind, DelayWetOnly);
 
+        engine.SetPanLaw(PanLaw.Stereo, checkpoint: false);
         engine.ClearUndoHistory();
         return inst;
     }

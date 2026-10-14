@@ -307,10 +307,7 @@ void Engine::remapCvLinksAfterDeviceChange(int32_t track, int32_t removedIndex, 
     if (!authoring_) return;
     bool anyChange = false;
     auto g = std::make_shared<Graph>();
-    g->sceneCount = authoring_->sceneCount;
-    g->scenes = authoring_->scenes;
-    g->masterVolume = authoring_->masterVolume;
-    g->masterTrack = authoring_->masterTrack;
+    inheritGraphLevel(*g, *authoring_);
     g->tracks.reserve(authoring_->tracks.size());
     for (auto& ot : authoring_->tracks) {
         const bool ownerIsEdited = ot->id() == track;

@@ -806,6 +806,25 @@ NOTA_API void       nota_engine_undo_group_end(NotaEngine* engine);
  * closed. Message thread only. No-op for a null engine. */
 NOTA_API void       nota_engine_clear_undo_history(NotaEngine* engine);
 
+/* ---- Pan law (006) ------------------------------------------------------- */
+/* How a track's or return's pan is applied to a stereo signal. Project-wide, part of
+ * the graph snapshot (undo/redo restore it). BALANCE (the default, and every project
+ * before format v21): the opposite channel is attenuated. STEREO: the whole image
+ * moves — the far channel is folded into the near side, a mono fold at full pan.
+ * Identical for mono material and at centre. Groups, clip pan envelopes and rack-chain
+ * pans are not affected. */
+#define NOTA_PAN_LAW_BALANCE 0
+#define NOTA_PAN_LAW_STEREO  1
+
+/* Set the law. checkpoint = 1: one undo step (user edit); 0: no undo entry (project
+ * load / new-project baseline). A change while playing crossfades over 10 ms.
+ * NOTA_ERR_INVALID_ARG for an unknown law; NOTA_OK (no-op, no undo step) if unchanged.
+ * Message thread only. */
+NOTA_API NotaResult nota_engine_set_pan_law(NotaEngine* engine, int32_t law, int32_t checkpoint);
+
+/* Current law (authoring graph). NOTA_PAN_LAW_BALANCE for a null engine. */
+NOTA_API int32_t    nota_engine_pan_law(const NotaEngine* engine);
+
 /* ---- Project load (M7-6) ------------------------------------------------- */
 /* Clear the session to an empty project: stop transport, drop all tracks,
  * reset the track-id counter and undo/redo history. Message thread only. */

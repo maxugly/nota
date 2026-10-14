@@ -158,6 +158,11 @@ public sealed partial class NotaEngine : IAudioEngine
     public void EndUndoGroup() { ThrowIfDisposed(); NativeMethods.UndoGroupEnd(_handle); }
     public void ClearUndoHistory() { ThrowIfDisposed(); NativeMethods.ClearUndoHistory(_handle); }
 
+    // --- Pan law (specs/006) -------------------------------------------------
+    public PanLaw PanLaw { get { ThrowIfDisposed(); return (PanLaw)NativeMethods.PanLaw(_handle); } }
+    public void SetPanLaw(PanLaw law, bool checkpoint = true)
+    { ThrowIfDisposed(); Check(NativeMethods.SetPanLaw(_handle, (int)law, checkpoint ? 1 : 0)); }
+
     // --- Project load (M7-6) -----------------------------------------------
 
     /// <summary>Clears the session to an empty project (used by File → New / Open).</summary>

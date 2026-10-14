@@ -30,7 +30,7 @@ public sealed class ProjectService
     /// per-segment curvature (automationPoint.curve). v5 adds audio-clip pitch + warp
     /// (pitchSemitones / warpEnabled / warpMode / warpBeats). v6 adds warp markers.</summary>
     /// v18 (Phase 3) adds CV modulation: per-track LFO modulators + CV links to device params.
-    public const int CurrentFormatVersion = 20;
+    public const int CurrentFormatVersion = 21;
 
     /// <summary>Manifest file name inside the bundle folder.</summary>
     public const string ManifestName = "project.json";
@@ -67,6 +67,11 @@ public sealed class ProjectService
                 TimeSigNumerator = transport.TimeSigNumerator,
                 TimeSigDenominator = transport.TimeSigDenominator,
                 Key = Nota.Application.Samples.MusicalKey.FromCode(transport.Key)?.Short,
+            },
+            Mixer = new MixerDto
+            {
+                PanLaw = engine.PanLaw == PanLaw.Stereo ? "stereo" : "balance",
+                PanLawLegacy = transport.PanLawLegacy,
             },
         };
 
@@ -434,6 +439,10 @@ public sealed class ProjectService
     {
         var warnings = new List<string>();
         engine.Reset();
+
+        // Pan law (specs/006) first, as the baseline rather than an undo step. A missing mixer
+        // is a pre-v21 project: Balance, so the mix sounds as it was saved.
+        engine.SetPanLaw(ParsePanLaw(doc.Mixer?.PanLaw, warnings), checkpoint: false);
 
         // Restore the scene count before tracks so their session slots size to it (the doc may
         // hold more/fewer scenes than the fresh default after add/remove-scene edits).
@@ -873,6 +882,18 @@ public sealed class ProjectService
     }
 
     // --- helpers -----------------------------------------------------------
+
+    private static PanLaw ParsePanLaw(string? value, List<string> warnings)
+    {
+        switch (value)
+        {
+            case null or "balance": return PanLaw.Balance;
+            case "stereo": return PanLaw.Stereo;
+            default:
+                warnings.Add($"Unknown pan law '{value}' — using Balance.");
+                return PanLaw.Balance;
+        }
+    }
 
     // Records `sampleId` under a bundle-relative path named by its content hash
     // (identical audio shares one file) and returns that path, or null if the sample

@@ -25,7 +25,8 @@ public sealed class ProjectStore : IProjectStore
             doc.Transport.Bpm, doc.Transport.MasterVolume,
             doc.Transport.MetronomeOn, doc.Transport.LoopOn,
             doc.Transport.TimeSigNumerator, doc.Transport.TimeSigDenominator,
-            Nota.Application.Samples.MusicalKey.Parse(doc.Transport.Key)?.Code ?? -1);
+            Nota.Application.Samples.MusicalKey.Parse(doc.Transport.Key)?.Code ?? -1,
+            PanLawLegacy: doc.Mixer?.PanLawLegacy ?? true);
         return new ProjectLoadResult(transport, warnings) { MissingPlugins = MissingPlugins(doc) };
     }
 

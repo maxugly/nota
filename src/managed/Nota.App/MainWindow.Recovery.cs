@@ -26,7 +26,8 @@ public partial class MainWindow
     private TransportState TransportSnapshot()
         => new((double)_vm!.Transport.Bpm, _vm.Transport.MasterVolume,
                _vm.Transport.MetronomeOn, _vm.Transport.LoopOn,
-               _vm.Transport.TimeSigNumerator, _vm.Transport.TimeSigDenominator, _vm.Transport.KeyCode);
+               _vm.Transport.TimeSigNumerator, _vm.Transport.TimeSigDenominator, _vm.Transport.KeyCode,
+               _panLawLegacy);
 
     private void OnAutosaveTick()
     {
@@ -95,6 +96,7 @@ public partial class MainWindow
         if (_vm is null) return;
         // The launch workspace starts from the same template as File → New.
         Nota.Infrastructure.ProjectTemplate.ApplyDefault(Engine);
+        _panLawLegacy = false;
         RefreshAfterLoad();
         MarkProjectClean();   // the fresh startup project counts as unmodified
 

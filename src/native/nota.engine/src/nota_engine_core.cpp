@@ -249,6 +249,16 @@ void nota_engine_undo_group_begin(NotaEngine* e) { if (e) ENG(e)->beginUndoGroup
 void nota_engine_undo_group_end(NotaEngine* e) { if (e) ENG(e)->endUndoGroup(); }
 void nota_engine_clear_undo_history(NotaEngine* e) { if (e) ENG(e)->clearUndoHistory(); }
 
+// ---- Pan law (006) ---------------------------------------------------------
+
+NotaResult nota_engine_set_pan_law(NotaEngine* e, int32_t law, int32_t checkpoint) {
+    if (!e || (law != NOTA_PAN_LAW_BALANCE && law != NOTA_PAN_LAW_STEREO)) return NOTA_ERR_INVALID_ARG;
+    return ENG(e)->setPanLaw(static_cast<nota::PanLaw>(law), checkpoint != 0) ? NOTA_OK : NOTA_ERR_INVALID_ARG;
+}
+int32_t nota_engine_pan_law(const NotaEngine* e) {
+    return e ? static_cast<int32_t>(CENG(e)->panLaw()) : NOTA_PAN_LAW_BALANCE;
+}
+
 // ---- Project reset (M7-6) -------------------------------------------------
 
 void nota_engine_reset(NotaEngine* e) {

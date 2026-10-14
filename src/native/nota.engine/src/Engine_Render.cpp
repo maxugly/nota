@@ -52,6 +52,48 @@ struct ScopedNoDenormals {
 constexpr double kTwoPi = 6.283185307179586;
 constexpr float  kToneGain = 0.2f;
 constexpr float  kMetroGain = 0.5f;
+// Track / return pan as a 2×2 matrix (specs/006): out L = ll·L + lr·R, out R = rl·L + rr·R,
+// fader volume included. Balance is the equal-power law Nota always had (cross terms 0, the
+// far channel fades out). Stereo folds a share b = |pan|/2 of the far channel into the near
+// side and takes it off the near channel's own gain, so a mono source (L = R) gets exactly
+// the Balance gains, centre is identical, and full pan is the mono fold (L+R)/2.
+struct PanGains { float ll, lr, rl, rr; };
+inline PanGains panGains(float pan, float vol, PanLaw law) {
+    const double theta = (pan + 1.0) * (kTwoPi / 8.0); // 0..pi/2
+    const double c = std::cos(theta), s = std::sin(theta);
+    if (law == PanLaw::Balance)
+        return { static_cast<float>(c) * vol, 0.0f, 0.0f, static_cast<float>(s) * vol };
+    const double b = 0.5 * std::fabs(pan);
+    if (pan <= 0.0f)
+        return { static_cast<float>(c - b) * vol, static_cast<float>(b) * vol, 0.0f, static_cast<float>(s) * vol };
+    return { static_cast<float>(c) * vol, 0.0f, static_cast<float>(b) * vol, static_cast<float>(s - b) * vol };
+}
+
+// One track's pan for one segment. Without cross terms or a law crossfade it is the plain
+// two-gain multiply (so Balance renders stay bit-identical); during a crossfade the gains
+// blend from the old law's to the new law's per sample.
+struct PanStage {
+    PanGains to, from;
+    bool  cross, fade;
+    float pos, step;
+    PanStage(float pan, float vol, PanLaw toLaw, PanLaw fromLaw, float fadePos, float fadeStep)
+        : to(panGains(pan, vol, toLaw)), from(to), fade(fadePos < 1.0f), pos(fadePos), step(fadeStep) {
+        if (fade) from = panGains(pan, vol, fromLaw);
+        cross = fade || to.lr != 0.0f || to.rl != 0.0f;
+    }
+    void apply(int32_t i, float inL, float inR, float& l, float& r) const {
+        if (!cross) { l = inL * to.ll; r = inR * to.rr; return; }
+        PanGains k = to;
+        if (fade) {
+            const float x = std::min(1.0f, pos + step * static_cast<float>(i));
+            k = { from.ll + (to.ll - from.ll) * x, from.lr + (to.lr - from.lr) * x,
+                  from.rl + (to.rl - from.rl) * x, from.rr + (to.rr - from.rr) * x };
+        }
+        l = k.ll * inL + k.lr * inR;
+        r = k.rl * inL + k.rr * inR;
+    }
+};
+
 // Sort note events by sample offset; at ties, note-offs before note-ons so a
 // same-block same-pitch retrigger releases the old voice before the new one.
 inline bool midiEvLess(const MidiEv& a, const MidiEv& b) {
@@ -1052,6 +1094,25 @@ void Engine::renderMonitorInput(Graph* g, const Track& t, float* dst, int32_t fr
 
 void Engine::mixGraph(Graph* g, float* out, int32_t frames, double blockStart, bool playing, double spb) {
     {
+        // Pan law (specs/006): a change of the live law starts a 10 ms crossfade of the pan
+        // gains; flipping back mid-fade reverses it from where it is, so nothing jumps. A law
+        // that came with a load / reset is taken at once (nothing of the old project sounds).
+        if (panLawSnap_.exchange(false, std::memory_order_acq_rel)) {
+            panLawFrom_ = panLawTo_ = g->panLaw;
+            panLawPos_ = 1.0f;
+        } else if (g->panLaw != panLawTo_) {
+            if (panLawPos_ < 1.0f && g->panLaw == panLawFrom_) {
+                std::swap(panLawFrom_, panLawTo_);
+                panLawPos_ = 1.0f - panLawPos_;
+            } else {
+                panLawFrom_ = panLawTo_;
+                panLawTo_ = g->panLaw;
+                panLawPos_ = 0.0f;
+            }
+        }
+        const double srLaw = transport_.sampleRate() > 0 ? transport_.sampleRate() : 44100.0;
+        const float panLawStep = static_cast<float>(1.0 / (0.010 * srLaw));
+
         // Automation (M9): read-mode block-rate eval — write each active lane's
         // value into its target atomic before the mix reads it. Always runs (also
         // when stopped: the playhead is static, so scrub shows automation too).
@@ -1264,9 +1325,7 @@ void Engine::mixGraph(Graph* g, float* out, int32_t frames, double blockStart, b
             // 3) Channel fader + equal-power pan into the master mix + sends.
             const float vol = t.volume();
             const float pan = std::clamp(t.pan(), -1.0f, 1.0f);
-            const double theta = (pan + 1.0) * (kTwoPi / 8.0); // 0..pi/2
-            const float gl = static_cast<float>(std::cos(theta)) * vol;
-            const float gr = static_cast<float>(std::sin(theta)) * vol;
+            const PanStage ps(pan, vol, panLawTo_, panLawFrom_, panLawPos_, panLawStep);   // project pan law
             float sends[kMaxReturns]; bool anySend = false;   // post-fader send taps (M6-1)
             for (int b = 0; b < numReturns; ++b) { sends[b] = t.send(b); if (sends[b] != 0.0f) anySend = true; }
             const int32_t routeSlot = routeSlotForTrack(t.id());   // Phase B: this track is a sidechain source?
@@ -1276,8 +1335,8 @@ void Engine::mixGraph(Graph* g, float* out, int32_t frames, double blockStart, b
             double sqL = 0.0, sqR = 0.0;
             int64_t recDropped = 0;
             for (int32_t i = 0; i < frames; ++i) {
-                const float l = scratch_[i * 2]     * gl;
-                const float r = scratch_[i * 2 + 1] * gr;
+                float l, r;
+                ps.apply(i, scratch_[i * 2], scratch_[i * 2 + 1], l, r);
                 if (tapRec && !inputQueue_.push(InputFrame{ l, r })) ++recDropped;   // record this track's output
                 if (route) { route[i * 2] += l; route[i * 2 + 1] += r; }   // tap post-fader → route bus
                 if (!toMix) continue;                                         // solo-gated feeder: taps only
@@ -1402,9 +1461,7 @@ void Engine::mixGraph(Graph* g, float* out, int32_t frames, double blockStart, b
 
             const float vol = t.volume();
             const float pan = std::clamp(t.pan(), -1.0f, 1.0f);
-            const double theta = (pan + 1.0) * (kTwoPi / 8.0);
-            const float gl = static_cast<float>(std::cos(theta)) * vol;
-            const float gr = static_cast<float>(std::sin(theta)) * vol;
+            const PanStage ps(pan, vol, panLawTo_, panLawFrom_, panLawPos_, panLawStep);   // project pan law
             const int32_t routeSlot = routeSlotForTrack(t.id());
             float* route = routeSlot >= 0 ? routeBusNext_[routeSlot].data() : nullptr;
             const bool tapRec = (recSrc > 0 && t.id() == recSrc);   // internal resampling source (a return)
@@ -1412,8 +1469,8 @@ void Engine::mixGraph(Graph* g, float* out, int32_t frames, double blockStart, b
             double sqL = 0.0, sqR = 0.0;
             int64_t recDropped = 0;
             for (int32_t i = 0; i < frames; ++i) {
-                const float l = scratch_[i * 2]     * gl;
-                const float r = scratch_[i * 2 + 1] * gr;
+                float l, r;
+                ps.apply(i, scratch_[i * 2], scratch_[i * 2 + 1], l, r);
                 out[i * 2]     += l;
                 out[i * 2 + 1] += r;
                 if (tapRec && !inputQueue_.push(InputFrame{ l, r })) ++recDropped;
@@ -1444,6 +1501,8 @@ void Engine::mixGraph(Graph* g, float* out, int32_t frames, double blockStart, b
                 routeBus_[s].swap(routeBusNext_[s]);
                 routeBusPre_[s].swap(routeBusPreNext_[s]);
             }
+
+        if (panLawPos_ < 1.0f) panLawPos_ = std::min(1.0f, panLawPos_ + panLawStep * static_cast<float>(frames));
     }
 }
 

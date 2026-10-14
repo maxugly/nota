@@ -111,10 +111,8 @@ bool Engine::clearSessionSlot(int32_t trackId, int32_t scene) {
 std::shared_ptr<Graph> Engine::rebuildScenes(int32_t newCount,
                                               const std::function<void(std::vector<SessionSlot>&)>& mutate) {
     auto g = std::make_shared<Graph>();
-    g->sceneCount   = newCount;
-    g->scenes       = authoring_->scenes;
-    g->masterVolume = authoring_->masterVolume;
-    g->masterTrack  = authoring_->masterTrack;
+    inheritGraphLevel(*g, *authoring_);
+    g->sceneCount = newCount;
     g->tracks.reserve(authoring_->tracks.size());
     for (auto& t : authoring_->tracks) {
         auto nt = cloneTrack(*t);
@@ -859,10 +857,8 @@ int32_t Engine::insertSceneRow(int32_t at, int32_t copyFrom, bool capturePlaying
     const int32_t count = authoring_->sceneCount;
     if (at < 0 || at > count || copyFrom >= count) return -1;
     auto g = std::make_shared<Graph>();
-    g->sceneCount   = count + 1;
-    g->scenes       = authoring_->scenes;
-    g->masterVolume = authoring_->masterVolume;
-    g->masterTrack  = authoring_->masterTrack;
+    inheritGraphLevel(*g, *authoring_);
+    g->sceneCount = count + 1;
     if (static_cast<int32_t>(g->scenes.size()) < count) g->scenes.resize(count);
     g->scenes.insert(g->scenes.begin() + at, copyFrom >= 0 ? g->scenes[copyFrom] : SceneInfo{});
     g->tracks.reserve(authoring_->tracks.size());

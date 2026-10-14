@@ -181,6 +181,7 @@ public partial class MainWindow
         _vm.Transport.TimeSigNumerator = 4;
         _vm.Transport.TimeSigDenominator = 4;
         _vm.Transport.KeyCode = -1;
+        _panLawLegacy = false;     // new projects use the Stereo pan law (set by the template)
         _projectPath = null;
         _learn?.Clear();   // start with a clean MIDI-map for the new project
         Timeline.ClearSections();   // …and a clean song structure
@@ -216,6 +217,10 @@ public partial class MainWindow
     // opens another project before it finished (both loops run on the UI thread).
     private int _warpBuildGen;
 
+    // The open project predates the pan law (specs/006): only drives the Mixer's OLDER PROJECT
+    // badge and is saved back as is.
+    private bool _panLawLegacy;
+
     /// <summary>Loads a .nota bundle and applies it to the engine (menu + browser). M7-4b.</summary>
     private void OpenProject(string dir)
     {
@@ -239,6 +244,7 @@ public partial class MainWindow
             _vm.Transport.TimeSigNumerator = result.Transport.TimeSigNumerator;
             _vm.Transport.TimeSigDenominator = result.Transport.TimeSigDenominator;
             _vm.Transport.KeyCode = result.Transport.Key;
+            _panLawLegacy = result.Transport.PanLawLegacy;
             _projectPath = dir;
             _learn?.LoadMappings(dir);   // MIDI-learn mappings ride in the bundle sidecar
             _modular?.LoadLayout(dir);   // modular-editor node/island positions (sidecar)

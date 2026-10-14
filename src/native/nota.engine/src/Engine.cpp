@@ -518,10 +518,8 @@ void Engine::publish(std::shared_ptr<Graph> g) {
 
 void Engine::republishWithTrackRaw(int32_t trackId, std::shared_ptr<Track> nt) {
     auto g = std::make_shared<Graph>();
-    g->sceneCount = authoring_->sceneCount;    // preserve scene count across the swap
-    g->scenes = authoring_->scenes;
-    g->masterVolume = authoring_->masterVolume; // carry master automation (M9 follow-up)
-    g->masterTrack = (trackId == kMasterTrackId) ? nt : authoring_->masterTrack;  // master chain edit or carry
+    inheritGraphLevel(*g, *authoring_);
+    if (trackId == kMasterTrackId) g->masterTrack = nt;   // master chain edit
     g->tracks.reserve(authoring_->tracks.size());
     for (auto& t : authoring_->tracks)
         g->tracks.push_back(t->id() == trackId ? nt : t);
@@ -551,6 +549,21 @@ bool Engine::redo() {
     return true;
 }
 
+// --- project pan law (specs/006) -------------------------------------------
+
+bool Engine::setPanLaw(PanLaw law, bool checkpoint) {
+    if (law != PanLaw::Balance && law != PanLaw::Stereo) return false;
+    if (!authoring_ || authoring_->panLaw == law) return true;
+    auto g = std::make_shared<Graph>(*authoring_);   // copy: tracks shared, graph-level fields kept
+    g->panLaw = law;
+    if (checkpoint) publish(std::move(g));
+    else {          // load / baseline: no crossfade from the previous project's law
+        publishRaw(std::move(g));
+        panLawSnap_.store(true, std::memory_order_release);
+    }
+    return true;
+}
+
 // --- project load (M7-6) ---------------------------------------------------
 
 void Engine::reset() {
@@ -570,6 +583,7 @@ void Engine::reset() {
     auto empty = std::make_shared<Graph>();
     empty->masterTrack = std::make_shared<Track>(kMasterTrackId, TrackType::Audio);
     publishRaw(std::move(empty));
+    panLawSnap_.store(true, std::memory_order_release);   // a new project takes its law at once
     nextTrackId_ = 1;
     clearUndoHistory();
 }

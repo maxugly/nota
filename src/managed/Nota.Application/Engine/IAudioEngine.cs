@@ -826,6 +826,13 @@ public interface IAudioEngine : IDisposable
     /// <summary>Forget the undo/redo history; the current state becomes the baseline.</summary>
     void ClearUndoHistory();
 
+    // --- Pan law (specs/006) ---------------------------------------------
+    /// <summary>Project pan law (graph-level, undoable). See nota_engine_set_pan_law.</summary>
+    PanLaw PanLaw { get; }
+    /// <summary>Sets the project pan law; <paramref name="checkpoint"/> = false adds no undo
+    /// step (project load, the new-project baseline). No-op if unchanged.</summary>
+    void SetPanLaw(PanLaw law, bool checkpoint = true);
+
     // --- Project load (M7-6) -----------------------------------------------
     void Reset();
     int TrackInstrumentKind(int trackId);

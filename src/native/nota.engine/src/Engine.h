@@ -1004,6 +1004,12 @@ public:
     // built default project). Message thread only.
     void clearUndoHistory();
 
+    // --- project pan law (specs/006) ---
+    // Graph-level, so undo/redo restore it. checkpoint = false for load / the new-project
+    // baseline. False for an unknown law; a no-op (no undo step) if unchanged. Message thread.
+    bool setPanLaw(PanLaw law, bool checkpoint);
+    PanLaw panLaw() const { return authoring_ ? authoring_->panLaw : PanLaw::Balance; }
+
     // --- offline render (tests / export) ---
     void renderOffline(float* out, int32_t frames);
     // Render at a specific sample rate (WAV export, M6-4). Sets the transport
@@ -1340,6 +1346,13 @@ private:
     std::vector<OverrideTarget> overrides_;
     bool wasPlaying_ = false;                 // poll() edge detection: stop ends latched writes
     bool renderWasPlaying_ = false;           // audio-thread play→stop edge (flush stuck notes)
+    // Pan-law crossfade (specs/006), audio thread only: when the live graph's law changes, the
+    // track/return pan stages blend from panLawFrom_'s gains to panLawTo_'s over 10 ms.
+    PanLaw panLawFrom_ = PanLaw::Balance, panLawTo_ = PanLaw::Balance;
+    float  panLawPos_ = 1.0f;                 // 0 = from … 1 = to (1 = no fade running)
+    // Set by the message thread when the law comes from a load / reset / the new-project
+    // baseline rather than a user switch: the audio thread then takes it at once, no fade.
+    std::atomic<bool> panLawSnap_{false};
     bool seekedThisBlock_ = false;            // a Seek command was drained this block (audio thread)
     bool seekedWhileRolling_ = false;         // ...and it arrived while the transport was rolling
     bool chaseNotes_ = false;                 // this segment starts at a discontinuity: re-trigger held clip notes

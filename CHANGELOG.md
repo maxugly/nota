@@ -26,8 +26,17 @@ Entry categories: `Added`, `Changed`, `Fixed`, `Removed`.
 - **Note length and velocity from the keyboard:** in the piano roll, **⇧← / ⇧→** shorten
   or lengthen every selected note by one grid step (starts stay put), and **⌥↑ / ⌥↓**
   raise or lower their velocity by 10 — **⌥⇧↑ / ⌥⇧↓** by 1. Each press is one undo step.
+- **Stereo pan law:** panning a stereo track or return now moves its whole image instead
+  of dropping a channel — at full left, both channels play from the left speaker. Mono
+  material and centred tracks sound exactly as before. New projects use it; the Mixer
+  footer shows the project's **PAN LAW** (Stereo / Balance) and switches it during
+  playback without a click, as one undo step. Group strips are marked **BAL**: groups keep
+  their balance so grouping stays level-transparent.
 
 ### Changed
+- **Existing projects keep the Balance pan law** and sound exactly as before; the Mixer
+  marks them **Older project** until you switch them to Stereo. Projects are saved in
+  format v21 — earlier Nota versions can't open them.
 - **Notes replace the notes they land on:** a note moved, stretched, drawn or pasted onto
   a note of the same pitch no longer stacks on top of it. The note underneath is cut where
   the new one starts, or removed if its start is covered. This happens when you let the

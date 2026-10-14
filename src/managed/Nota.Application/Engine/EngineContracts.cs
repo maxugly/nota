@@ -239,6 +239,10 @@ public struct NotaMeter
 /// <summary>What a parameter-automation lane drives (M9). Matches native AutomationTarget.</summary>
 public enum AutomationTarget { Volume = 0, Pan = 1, DeviceParam = 2, PluginParam = 3, MidiDeviceParam = 4 }
 
+/// <summary>Project pan law (specs/006). Matches NOTA_PAN_LAW_*: Balance drops the far
+/// channel as a track pans, Stereo folds it into the near side.</summary>
+public enum PanLaw { Balance = 0, Stereo = 1 }
+
 
 /// <summary>MIDI clip envelope target (M9 follow-up). Velocity scales note velocities;
 /// Volume scales the instrument output during the clip.</summary>

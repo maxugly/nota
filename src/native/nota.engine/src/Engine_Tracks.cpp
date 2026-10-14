@@ -459,10 +459,7 @@ void Engine::reconfigureAllWarpStreams(double spb, double devSR) {
     if (devSR <= 0.0 || spb <= 0.0) return;
     bool any = false;
     auto g = std::make_shared<Graph>();
-    g->sceneCount = authoring_->sceneCount;
-    g->scenes = authoring_->scenes;
-    g->masterVolume = authoring_->masterVolume;
-    g->masterTrack = authoring_->masterTrack;
+    inheritGraphLevel(*g, *authoring_);
     g->tracks.reserve(authoring_->tracks.size());
     for (auto& t : authoring_->tracks) {
         bool warped = false;
@@ -1380,10 +1377,7 @@ bool Engine::moveClipToTrack(int32_t srcTrackId, int32_t clipIndex, int32_t sour
     // Atomic two-track swap in a single publish (one undo checkpoint).
     pushUndo();
     auto g = std::make_shared<Graph>();
-    g->sceneCount = authoring_->sceneCount;
-    g->scenes = authoring_->scenes;
-    g->masterVolume = authoring_->masterVolume;
-    g->masterTrack = authoring_->masterTrack;
+    inheritGraphLevel(*g, *authoring_);
     g->tracks.reserve(authoring_->tracks.size());
     for (auto& t : authoring_->tracks) {
         if (t->id() == srcTrackId)       g->tracks.push_back(nsrc);
@@ -1500,10 +1494,7 @@ bool Engine::moveClipBlock(const std::vector<ClipMoveReq>& moves) {
     // Publish every touched track at once — a single undo checkpoint for the whole group.
     pushUndo();
     auto g = std::make_shared<Graph>();
-    g->sceneCount   = authoring_->sceneCount;
-    g->scenes = authoring_->scenes;
-    g->masterVolume = authoring_->masterVolume;
-    g->masterTrack  = authoring_->masterTrack;
+    inheritGraphLevel(*g, *authoring_);
     g->tracks.reserve(authoring_->tracks.size());
     for (auto& t : authoring_->tracks) {
         auto it = clones.find(t->id());
@@ -1532,10 +1523,7 @@ bool Engine::deleteClipsInRange(const std::vector<int32_t>& trackIds, double sta
     auto listed = [&](int32_t id){ return std::find(trackIds.begin(), trackIds.end(), id) != trackIds.end(); };
     bool any = false;
     auto g = std::make_shared<Graph>();
-    g->sceneCount = authoring_->sceneCount;
-    g->scenes = authoring_->scenes;
-    g->masterVolume = authoring_->masterVolume;
-    g->masterTrack = authoring_->masterTrack;
+    inheritGraphLevel(*g, *authoring_);
     g->tracks.reserve(authoring_->tracks.size());
     for (auto& t : authoring_->tracks) {
         if (t->type() != TrackType::Return && listed(t->id()) && rangeTouchesTrack(*t, start, end, spb, devSR)) {
@@ -1562,10 +1550,7 @@ bool Engine::splitClipsAtRange(const std::vector<int32_t>& trackIds, double star
     auto listed = [&](int32_t id){ return std::find(trackIds.begin(), trackIds.end(), id) != trackIds.end(); };
     bool any = false;
     auto g = std::make_shared<Graph>();
-    g->sceneCount = authoring_->sceneCount;
-    g->scenes = authoring_->scenes;
-    g->masterVolume = authoring_->masterVolume;
-    g->masterTrack = authoring_->masterTrack;
+    inheritGraphLevel(*g, *authoring_);
     g->tracks.reserve(authoring_->tracks.size());
     for (auto& t : authoring_->tracks) {
         if (t->type() == TrackType::Return || !listed(t->id()) || !rangeTouchesTrack(*t, start, end, spb, devSR))
@@ -1617,10 +1602,7 @@ double Engine::duplicateRange(const std::vector<int32_t>& trackIds, double start
     auto listed = [&](int32_t id){ return std::find(trackIds.begin(), trackIds.end(), id) != trackIds.end(); };
     bool any = false;
     auto g = std::make_shared<Graph>();
-    g->sceneCount = authoring_->sceneCount;
-    g->scenes = authoring_->scenes;
-    g->masterVolume = authoring_->masterVolume;
-    g->masterTrack = authoring_->masterTrack;
+    inheritGraphLevel(*g, *authoring_);
     g->tracks.reserve(authoring_->tracks.size());
     for (auto& t : authoring_->tracks) {
         if (t->type() == TrackType::Return || !listed(t->id()) || !rangeTouchesTrack(*t, start, end, spb, devSR))
@@ -1752,10 +1734,7 @@ bool Engine::insertTime(double at, double len, bool duplicate) {
 
     bool any = false;
     auto g = std::make_shared<Graph>();
-    g->sceneCount = authoring_->sceneCount;
-    g->scenes = authoring_->scenes;
-    g->masterVolume = authoring_->masterVolume;
-    g->masterTrack = authoring_->masterTrack;
+    inheritGraphLevel(*g, *authoring_);
     any |= shiftLane(g->masterVolume);
     if (g->masterTrack)
         if (auto nm = shiftTrack(*g->masterTrack)) { g->masterTrack = nm; any = true; }
@@ -1894,10 +1873,7 @@ bool Engine::consolidateRange(const std::vector<int32_t>& trackIds, double start
     auto listed = [&](int32_t id){ return std::find(trackIds.begin(), trackIds.end(), id) != trackIds.end(); };
     std::vector<std::pair<int32_t,int32_t>> placed;
     auto g = std::make_shared<Graph>();
-    g->sceneCount = authoring_->sceneCount;
-    g->scenes = authoring_->scenes;
-    g->masterVolume = authoring_->masterVolume;
-    g->masterTrack = authoring_->masterTrack;
+    inheritGraphLevel(*g, *authoring_);
     g->tracks.reserve(authoring_->tracks.size());
     for (auto& t : authoring_->tracks) {
         const bool clipTrack = t->type() == TrackType::Instrument || t->type() == TrackType::Audio;
@@ -2437,10 +2413,7 @@ void Engine::placeBlock(const std::vector<BlockClip>& items, double placedStart,
     // Publish all touched tracks at once — a single undo checkpoint for the whole block.
     pushUndo();
     auto g = std::make_shared<Graph>();
-    g->sceneCount   = authoring_->sceneCount;
-    g->scenes = authoring_->scenes;
-    g->masterVolume = authoring_->masterVolume;
-    g->masterTrack  = authoring_->masterTrack;
+    inheritGraphLevel(*g, *authoring_);
     g->tracks.reserve(authoring_->tracks.size());
     for (auto& t : authoring_->tracks) {
         auto it = clones.find(t->id());
@@ -2489,10 +2462,7 @@ bool Engine::cutClipBlock(const std::vector<std::pair<int32_t,int32_t>>& sel) {
     if (clones.empty()) return true;
     pushUndo();
     auto g = std::make_shared<Graph>();
-    g->sceneCount   = authoring_->sceneCount;
-    g->scenes = authoring_->scenes;
-    g->masterVolume = authoring_->masterVolume;
-    g->masterTrack  = authoring_->masterTrack;
+    inheritGraphLevel(*g, *authoring_);
     g->tracks.reserve(authoring_->tracks.size());
     for (auto& t : authoring_->tracks) {
         auto it = clones.find(t->id());
@@ -2684,10 +2654,7 @@ int32_t Engine::duplicateTrack(int32_t trackId) {
 
     // Insert the copy right after the source (new snapshot; checkpoints undo).
     auto g = std::make_shared<Graph>();
-    g->sceneCount = authoring_->sceneCount;
-    g->scenes = authoring_->scenes;
-    g->masterVolume = authoring_->masterVolume;
-    g->masterTrack = authoring_->masterTrack;
+    inheritGraphLevel(*g, *authoring_);
     g->tracks.reserve(authoring_->tracks.size() + 1);
     for (auto& t : authoring_->tracks) {
         g->tracks.push_back(t);
@@ -2708,10 +2675,7 @@ bool Engine::removeTrack(int32_t trackId) {
     if (rt->instrument) rt->instrument->closeEditor();
     for (auto& d : rt->devices) if (d) d->closeEditor();
     auto g = std::make_shared<Graph>();
-    g->sceneCount = authoring_->sceneCount;
-    g->scenes = authoring_->scenes;
-    g->masterVolume = authoring_->masterVolume;
-    g->masterTrack = authoring_->masterTrack;
+    inheritGraphLevel(*g, *authoring_);
     g->tracks.reserve(authoring_->tracks.size());
     for (auto& t : authoring_->tracks)
         if (t->id() != trackId) g->tracks.push_back(t);
@@ -2740,10 +2704,7 @@ bool Engine::moveTrack(int32_t trackId, int32_t toIndex) {
     regular.erase(regular.begin() + from);
     regular.insert(regular.begin() + to, tr);
     auto g = std::make_shared<Graph>();
-    g->sceneCount = authoring_->sceneCount;
-    g->scenes = authoring_->scenes;
-    g->masterVolume = authoring_->masterVolume;
-    g->masterTrack = authoring_->masterTrack;
+    inheritGraphLevel(*g, *authoring_);
     g->tracks.reserve(regular.size() + returns.size());
     for (auto& t : regular) g->tracks.push_back(t);
     for (auto& t : returns) g->tracks.push_back(t);
@@ -2778,10 +2739,7 @@ int32_t Engine::createGroup(const int32_t* ids, int32_t n) {
     auto isMember = [&](int32_t id) { return std::find(members.begin(), members.end(), id) != members.end(); };
 
     auto g = std::make_shared<Graph>();
-    g->sceneCount = authoring_->sceneCount;
-    g->scenes = authoring_->scenes;
-    g->masterVolume = authoring_->masterVolume;
-    g->masterTrack = authoring_->masterTrack;
+    inheritGraphLevel(*g, *authoring_);
     g->tracks.reserve(authoring_->tracks.size() + 1);
     bool placed = false;
     for (auto& t : authoring_->tracks) {
@@ -2804,10 +2762,7 @@ bool Engine::ungroup(int32_t groupId) {
     for (auto& d : grp->devices) if (d) d->closeEditor();   // its plugin windows shouldn't linger
     const int32_t parent = grp->groupId();                  // children reparent up one level
     auto g = std::make_shared<Graph>();
-    g->sceneCount = authoring_->sceneCount;
-    g->scenes = authoring_->scenes;
-    g->masterVolume = authoring_->masterVolume;
-    g->masterTrack = authoring_->masterTrack;
+    inheritGraphLevel(*g, *authoring_);
     g->tracks.reserve(authoring_->tracks.size());
     for (auto& t : authoring_->tracks) {
         if (t->id() == groupId) continue;                   // drop the group track
@@ -2834,10 +2789,7 @@ bool Engine::setTrackGroup(int32_t trackId, int32_t groupId) {
         }
     }
     auto g = std::make_shared<Graph>();
-    g->sceneCount = authoring_->sceneCount;
-    g->scenes = authoring_->scenes;
-    g->masterVolume = authoring_->masterVolume;
-    g->masterTrack = authoring_->masterTrack;
+    inheritGraphLevel(*g, *authoring_);
     g->tracks.reserve(authoring_->tracks.size());
     for (auto& tt : authoring_->tracks) {
         if (tt->id() == trackId) { auto nt = cloneTrack(*tt); nt->setGroupId(groupId); g->tracks.push_back(nt); }
@@ -2918,10 +2870,7 @@ std::vector<int32_t> Engine::insertTrackClones(const std::vector<std::shared_ptr
     if (clones.empty()) return newIds;
 
     auto g = std::make_shared<Graph>();
-    g->sceneCount = authoring_->sceneCount;
-    g->scenes = authoring_->scenes;
-    g->masterVolume = authoring_->masterVolume;
-    g->masterTrack = authoring_->masterTrack;
+    inheritGraphLevel(*g, *authoring_);
     g->tracks.reserve(authoring_->tracks.size() + clones.size());
     for (auto& t : authoring_->tracks) g->tracks.push_back(t);
     int32_t insertAt = -1;
@@ -2964,10 +2913,7 @@ bool Engine::removeTracks(const int32_t* ids, int32_t n) {
         drop.insert(t->id());
     }
     auto g = std::make_shared<Graph>();
-    g->sceneCount = authoring_->sceneCount;
-    g->scenes = authoring_->scenes;
-    g->masterVolume = authoring_->masterVolume;
-    g->masterTrack = authoring_->masterTrack;
+    inheritGraphLevel(*g, *authoring_);
     g->tracks.reserve(authoring_->tracks.size());
     for (auto& t : authoring_->tracks)
         if (!drop.count(t->id())) g->tracks.push_back(t);

@@ -82,6 +82,9 @@ internal static class VersionDiff
         if (!JsonNode.DeepEquals(before?["master"]?["devices"], after?["master"]?["devices"])) sound.Add("Master");
         if (!Same(before?["transport"]?["masterVolume"], after?["transport"]?["masterVolume"])) mix.Add("Master");
         if (!JsonNode.DeepEquals(before?["masterVolumeAutomation"], after?["masterVolumeAutomation"])) edited.Add("Master");
+        // The project pan law (specs/006); a version from before v21 has none = Balance.
+        static string Law(JsonNode? doc) => (string?)doc?["mixer"]?["panLaw"] ?? "balance";
+        if (Law(before) != Law(after)) sound.Add("Pan law");
 
         double? bpmBefore = Num(before?["transport"]?["bpm"]), bpmAfter = Num(after?["transport"]?["bpm"]);
         bool tempo = bpmBefore is { } b && bpmAfter is { } a && Math.Abs(a - b) > 1e-6;

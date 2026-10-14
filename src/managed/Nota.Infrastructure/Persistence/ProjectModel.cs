@@ -32,6 +32,9 @@ public sealed class ProjectDocument
     public List<AutomationPointDto> MasterVolumeAutomation { get; set; } = new();
     /// <summary>Master effect chain (devices on the master bus) + its name/colour.</summary>
     public MasterDto Master { get; set; } = new();
+    /// <summary>Mixer-wide settings: the project pan law (format v21). Null = a pre-v21 project
+    /// (migration fills it in) = Balance + older project.</summary>
+    public MixerDto? Mixer { get; set; }
 
     [JsonExtensionData] public Dictionary<string, JsonElement>? Extra { get; set; }
 
@@ -56,6 +59,17 @@ public sealed class MasterDto
     public string? Name { get; set; }
     public int ColorIndex { get; set; } = -1;
     public List<DeviceDto> Devices { get; set; } = new();
+
+    [JsonExtensionData] public Dictionary<string, JsonElement>? Extra { get; set; }
+}
+
+/// <summary>Mixer-wide settings (specs/006). <see cref="PanLaw"/> is "stereo" or "balance";
+/// <see cref="PanLawLegacy"/> marks a project made before the pan law (only drives the
+/// Mixer's OLDER PROJECT badge, never the sound).</summary>
+public sealed class MixerDto
+{
+    public string PanLaw { get; set; } = "balance";
+    public bool PanLawLegacy { get; set; }
 
     [JsonExtensionData] public Dictionary<string, JsonElement>? Extra { get; set; }
 }
