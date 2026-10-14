@@ -53,7 +53,8 @@ public sealed partial class PianoRollView
         if (m == _laneMode) return;
         _laneMode = m;
         _velHost.Child = m == LaneMode.Velocity ? _vel : _expr;
-        _laneRow.Height = m == LaneMode.Velocity ? VelH : ExprH;
+        _laneRow.Height = FlWorkflow ? double.NaN : m == LaneMode.Velocity ? VelH : ExprH;
+        if (FlWorkflow) _laneLayout.RowDefinitions[3].Height = new GridLength(m == LaneMode.Velocity ? VelH : ExprH);
         Invalidate();
         _laneTabs.InvalidateVisual();
     }
@@ -143,16 +144,16 @@ public sealed partial class PianoRollView
 
         public override void Render(DrawingContext ctx)
         {
-            ctx.FillRectangle(Brushes.Transparent, new Rect(Bounds.Size));
+            ctx.FillRectangle(_o.FlWorkflow ? FlEditorPalette.Panel : Brushes.Transparent, new Rect(Bounds.Size));
             for (int i = 0; i < Tabs.Length; i++)
             {
                 bool on = Tabs[i].Mode == _o._laneMode;
-                var ink = on ? TabActive : i == _hover ? KeyLabelHot : LabelText;
+                var ink = _o.FlWorkflow ? (on ? FlEditorPalette.Accent : FlEditorPalette.MutedText) : on ? TabActive : i == _hover ? KeyLabelHot : LabelText;
                 var ft = new FormattedText(Tabs[i].Label, NotaNum.Culture, FlowDirection.LeftToRight,
                     new Typeface(NotaFonts.Mono.FontFamily, FontStyle.Normal, FontWeight.Bold), 9, ink);
                 double y = Top + i * RowStep;
                 ctx.DrawText(ft, new Point((Bounds.Width - ft.Width) / 2, y));
-                if (on) ctx.FillRectangle(TabActive, new Rect(0, y + 1, 2, ft.Height - 2));
+                if (on) ctx.FillRectangle(_o.FlWorkflow ? FlEditorPalette.Accent : TabActive, new Rect(0, y + 1, 2, ft.Height - 2));
             }
         }
 

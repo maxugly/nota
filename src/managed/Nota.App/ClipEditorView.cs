@@ -30,6 +30,8 @@ public sealed class ClipEditorView : UserControl
     private readonly ToggleButton _toolsToggle;
     private Action<int> _setTab = _ => { };
     private bool _envMode;
+    private readonly Control _flTools;
+    private int _noteTab;
 
     public ClipEditorView(PianoRollView roll, string clipName, double startBeat,
                           IAudioEngine? engine = null, int trackId = -1, int clipIndex = -1, double lengthBeats = 4)
@@ -56,8 +58,22 @@ public sealed class ClipEditorView : UserControl
         _toolsToggle = new ToggleButton { Content = "Tools", Padding = new Thickness(12, 0), Classes = { "chip" } };
         _toolsToggle.Click += (_, _) => SetTools(_toolsToggle.IsChecked == true);
 
-        var tabs = Segments(new[] { "Notes", "Envelopes" }, 0, i => ShowTab(i == 1), out _setTab);
-        if (_envOverlay is null) Inactive.Set(tabs, true);   // session slots carry no clip envelope
+        _flTools = new FlRollToolbar(roll, clipName) { IsVisible = false };
+        grid.Children.Remove(roll);
+        DockPanel.SetDock(_flTools, Dock.Top);
+        var rollHost = new DockPanel { Children = { _flTools, roll } };
+        Grid.SetColumn(rollHost, 1);
+        grid.Children.Add(rollHost);
+        ToolTip.SetTip(_flTools, "P: draw · B: paint · E: select · D: delete · Right-drag: erase · Ctrl-drag: select");
+        var tabs = Segments(new[] { "Notes", "FL roll", "Envelopes" }, 0, i =>
+        {
+            if (i == 2 && _envOverlay is null) { _setTab(_noteTab); return; }
+            if (i != 2) _noteTab = i;
+            Roll.SetFlWorkflow(_noteTab == 1);
+            _flTools.IsVisible = i == 1;
+            _props.IsVisible = i != 1;
+            ShowTab(i == 2);
+        }, out _setTab);
         var right = new StackPanel
         {
             Orientation = Orientation.Horizontal, Spacing = 12,
@@ -80,7 +96,7 @@ public sealed class ClipEditorView : UserControl
 
     private void ShowTab(bool envelopes)
     {
-        if (envelopes && _envOverlay is null) { _setTab(0); return; }
+        if (envelopes && _envOverlay is null) { _setTab(_noteTab); return; }
         _envMode = envelopes;
         Roll.SetOverlay(envelopes ? _envOverlay : null);
         if (envelopes && _tools.IsVisible) SetTools(false);
@@ -90,7 +106,7 @@ public sealed class ClipEditorView : UserControl
     /// walking away from a half-tweaked generator leaves the clip as it was.</summary>
     private void SetTools(bool show)
     {
-        if (show && _envMode) { _setTab(0); ShowTab(false); }
+        if (show && _envMode) { _setTab(_noteTab); _flTools.IsVisible = _noteTab == 1; _props.IsVisible = _noteTab != 1; ShowTab(false); }
         _tools.IsVisible = show;
         _toolsToggle.IsChecked = show;
         _tools.SetActive(show);

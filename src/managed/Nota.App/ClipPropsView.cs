@@ -102,6 +102,8 @@ public sealed class ClipPropsView : UserControl
 
     private void OnRollChanged()
     {
+        int gridIndex = Array.FindIndex(GridValues, value => Math.Abs(value - _roll.Grid) < 1e-9);
+        if (gridIndex >= 0) { _gridIndex = gridIndex; _gridText.Text = GridLabels[gridIndex]; }
         double len = _roll.LengthBeats;
         _lengthText.Text = Duration(len);
         _loopText.Text = string.Format(NotaNum.Culture, "{0:0.##} {1}", len, Math.Abs(len - 1) < 1e-9 ? "beat" : "beats");

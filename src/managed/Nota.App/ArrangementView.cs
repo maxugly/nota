@@ -1043,7 +1043,7 @@ public sealed partial class ArrangementView : UserControl
     }
 
     internal double Snap(double beat)
-        => _snapEnabled && _snapBeats > 0 ? Math.Round(beat / _snapBeats) * _snapBeats : beat;
+        => BeatGrid.Nearest(beat, _snapBeats, _snapEnabled);
 
     /// <summary>Snap unless Alt is held (Alt = free/fine positioning). Reads the live
     /// modifier state so it can be toggled mid-drag (req 1.2.1/2.4/3.1/8.2.1, 7.10).</summary>

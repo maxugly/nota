@@ -466,6 +466,7 @@ ul.plain{{margin:0;padding-left:18px;color:var(--text-secondary)}} ul.plain li{{
   <p class="note" style="margin-top:10px">Header 36 · transport 42 under it (a departure from the almanac, which puts it at the bottom) · panels float on Gutter with 12 px gaps · status 22. List rows 26, one line: dot, name, mono metadata. Arrangement tracks 64, groups 26, header column 228.</p>
   <h3>Accepted departures</h3>
   <ul class="plain">
+    <li>The optional FL roll uses its own stock-style gray/green palette, compact icon toolbar and piano keys; the original Notes editor follows the Nota theme.</li>
     <li>Transport at the top, with the view switch leading it.</li>
     <li>English shell copy — tooltips are short and verb-first.</li>
     <li>Frequent choices with more than four options stay segments.</li>

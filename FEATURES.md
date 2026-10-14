@@ -165,6 +165,19 @@ the mixer opens as a separate floating window (**View → Mixer**, ⌘M).
 - **MIDI clip**: notes (pitch, start, length, velocity).
 - **Piano Roll**: draw, move, stretch and delete notes; quantization; grid length; a
   velocity editor; transposing the selection.
+  - **FL roll** tab alongside Notes: a full-width grid, compact tool strip, clickable
+    note overview and snap selector. Single-click to draw; paint successive notes;
+    right-drag to erase; Ctrl-drag to select; middle-drag to pan; Alt bypasses snap.
+    Its stock-style gray palette, green notes, salmon selection, piano keyboard and
+    icon toolbar are independent of Nota's theme. P / B / D / C / E / Z / Y select
+    Draw / Paint / Delete / Slice / Select / Zoom / Playback. New notes remember the
+    last clicked or resized note's length. Both tabs edit the same clip and share undo.
+    FL shortcuts include Ctrl+B duplicate (extends the clip when needed), Ctrl+D deselect,
+    Ctrl+Up/Down octave transpose, Ctrl+L legato, Ctrl+G glue (without recorded expression),
+    Ctrl+Q quick quantize, Shift+I invert selection, Backspace snap toggle, and Alt+wheel
+    velocity. Shift-drag copies; double-click opens note properties; the keyboard auditions
+    notes, middle-drag on it zooms pitch rows, and the controller lane has a resize divider.
+    Native FL slide/portamento flags and per-note mute are not implemented.
   - Drag a note's left edge to move its start (the end stays put); stacked notes keep
     separate velocity stems (grab a stem by its cap, ⇧-click to add it to the selection).
   - ⌘D duplicates notes over whatever they land on, like clips in the arrangement.

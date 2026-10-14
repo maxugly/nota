@@ -392,6 +392,17 @@ public partial class MainWindow
         if (_vm is null) return;
         var roll = new PianoRollView
         {
+            CommitResized = (notes, newLength) =>
+            {
+                if (!Engine.TryGetClipInfo(trackId, clipIndex, out var live) || !live.IsMidi) { InvalidateClipEditor(); return; }
+                var arr = new NotaNote[notes.Count];
+                for (int i = 0; i < notes.Count; i++) arr[i] = notes[i];
+                Engine.BeginUndoGroup();
+                try { Engine.TrimClip(trackId, clipIndex, live.StartBeat, newLength); Engine.SetClipNotes(trackId, clipIndex, arr); }
+                finally { Engine.EndUndoGroup(); }
+                _clipEditor?.SetClipBounds(live.StartBeat, newLength);
+                Timeline.Refresh();
+            },
             Commit = notes =>
             {
                 // The roll can outlive its clip: the target track/clip may have been
@@ -421,6 +432,8 @@ public partial class MainWindow
             },
             // Light up the key being played (computer keyboard S–K / MIDI), regardless of routing.
             PollHeldNotes = buf => Engine.LiveHeldNotes(buf),
+            PreviewNoteOn = (pitch, velocity) => Engine.TrackNoteOn(trackId, pitch, velocity),
+            PreviewNoteOff = pitch => Engine.TrackNoteOff(trackId, pitch),
             ExpressionOf = id => Engine.GetNoteExpression(id),
             CreateExpression = pts => Engine.CreateNoteExpression(pts),
         };
@@ -593,6 +606,15 @@ public partial class MainWindow
         SyncClipTab();                 // a Drum Rack slot lights the Pattern tab up
         var roll = new PianoRollView
         {
+            CommitResized = (notes, newLength) =>
+            {
+                var arr = new NotaNote[notes.Count];
+                for (int i = 0; i < notes.Count; i++) arr[i] = notes[i];
+                Engine.BeginUndoGroup();
+                try { Engine.SetSessionSlotLength(trackId, scene, newLength); Engine.SetSessionNotes(trackId, scene, arr); }
+                finally { Engine.EndUndoGroup(); }
+                _session?.Refresh(); _patternView?.Reload();
+            },
             Commit = notes =>
             {
                 var arr = new NotaNote[notes.Count];
@@ -602,6 +624,8 @@ public partial class MainWindow
                 _patternView?.Reload();
             },
             PollHeldNotes = buf => Engine.LiveHeldNotes(buf),
+            PreviewNoteOn = (pitch, velocity) => Engine.TrackNoteOn(trackId, pitch, velocity),
+            PreviewNoteOff = pitch => Engine.TrackNoteOff(trackId, pitch),
             ExpressionOf = id => Engine.GetNoteExpression(id),
             CreateExpression = pts => Engine.CreateNoteExpression(pts),
         };

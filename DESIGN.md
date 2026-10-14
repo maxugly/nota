@@ -454,6 +454,12 @@ allow-list with a comment saying why.
 
 Decisions taken while aligning the app, kept on purpose:
 
+- **Optional FL roll.** At the user's explicit request, this alternate piano-roll mode
+  uses its own stock-style gray/green palette, compact icon toolbar, salmon selection,
+  physical piano keys and Arial-compatible typography. `Theme/FlEditorPalette.cs` owns
+  those tokens; they are intentionally independent of Graphite/Paper. The original
+  Notes editor and the rest of the app continue to use the shared Nota theme.
+
 - **Transport at the top, view switch inside it.** The almanac puts the transport at the
   bottom and the modes in the header.
 - **Shell language is English.** The almanac asks for Russian infinitive tooltips; the app

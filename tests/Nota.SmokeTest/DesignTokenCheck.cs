@@ -355,6 +355,8 @@ internal static class DesignTokenCheck
         var hits = rules.ToDictionary(r => r.Name, _ => new List<string>());
         foreach (var f in Directory.EnumerateFiles(app, "*.*", SearchOption.AllDirectories)
                      .Where(f => (f.EndsWith(".cs") || f.EndsWith(".axaml")) && !f.Contains("/obj/") && !f.Contains("/bin/")
+                              // Optional FL editor tokens are a documented independent palette (DESIGN.md).
+                              && !f.EndsWith("Theme/FlEditorPalette.cs")
                               && !f.EndsWith("Theme/NotaPalette.cs") && !f.EndsWith("Theme/NotaTheme.axaml")))
         {
             var rel = Path.GetRelativePath(app, f);

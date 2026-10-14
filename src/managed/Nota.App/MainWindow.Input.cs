@@ -54,6 +54,8 @@ public partial class MainWindow
         }
         if (_vm.SuspendEnginePolling || PaletteOpen) return;   // the palette has the keyboard
         if (e.Source is TextBox || e.Source is NumericUpDown) return;
+        if (_editorRoll is { FlWorkflow: true, GridFocused: true } roll && roll.HandleFlShortcut(e))
+        { e.Handled = true; return; }
         if ((e.KeyModifiers & (KeyModifiers.Meta | KeyModifiers.Control | KeyModifiers.Alt)) != 0) return;
 
         if (e.Key == Key.Space)
