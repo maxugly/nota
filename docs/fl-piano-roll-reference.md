@@ -269,34 +269,66 @@ notes, and is loadable/saveable as `.ncp` palettes.
 
 ## Known gap — meter-aware grid (planned, not yet implemented)
 
-FL draws a **hierarchy** of vertical lines derived from the meter: bar lines, beat
-lines, and cell lines at the current time division — so a 6/8 pattern gets six
-eighths per bar, each subdivided per the meter, and the snap selection controls the
-cell size [R1][R2].
+FL draws a **hierarchy** of vertical lines derived from the **Pattern's** time
+signature: bar lines, beat lines, and cell lines at the current time division — so a
+6/8 pattern gets six eighths per bar, each subdivided per the meter [R2].
 
-Nota's FL roll currently does **not** do this. Two separate defects:
+Time signatures in FL are **per-Pattern**, multiple per pattern, and independent of
+the Playlist's — which is how differing meters get stacked in the Playlist as
+polyrhythms. They are a **visual helper only**: they change the grid behind the
+notes and the metronome downbeat, never playback or note data. Changing the meter
+for any Channel affects **all** Channels in the Pattern; a *Make unique* option
+detaches it [R2].
+
+Nota's FL roll does not do this yet. Two separate defects:
 
 1. **Hardcoded 4/4.** The FL renderer treats every bar as 4 beats in both the
    alternating-bar fill and the bar-line test (`PianoRollView.Fl.Rendering.cs`).
-   The roll has no time-signature access at all — `TimeSignature` lives on the
-   project and the transport, but is never read here.
+   The roll has no time-signature access at all.
 2. **No hierarchy.** Grid lines are emitted at the raw snap division, so `Line`,
-   `Cell` and `Events` in the snap menu all render identically (they reuse the
-   active division) instead of selecting distinct grids.
+   `Cell`, `Events` and `Markers` all render identically instead of selecting
+   distinct grids.
 
 A third, cosmetic defect was fixed on this branch: `SubBeat` was `#394247` against a
 `#3B4348` background — 2/255 apart, effectively invisible. Vertical lines now use
-dedicated `GridSub`/`GridBeat`/`Bar` pens that are clearly lighter than the
-background.
+dedicated `GridSub`/`GridBeat`/`Bar` pens that read clearly against the background.
+Note FL exposes an *Invert grid* command (bar-grid lines light↔dark), so the
+light/dark choice is a user preference, not a hardcoded value [R2].
+
+### Snap semantics (verified from the FL-26 offline help, `pianoroll_menu.htm`)
+
+| Snap | Behaviour |
+|---|---|
+| `Main` | Use the **Global snap** value from the Snap Panel |
+| `Line` | Snap to the nearest grid-line; **grid resolution changes with horizontal zoom** |
+| `Cell` | Snap to the **start** of the grid-cell the note falls in |
+| `(none)` | No snapping; movement limited only by the Project Timebase (PPQ) |
+| `1/6`…`1/2 step`, `Step` | Fraction of a step (step = 16th = 0.25 beat) |
+| `1/6`…`1/2 beat`, `Beat` | Fraction of a beat |
+| `Bar` | One bar |
+| `Events` | Relative to existing events, **including Ghost notes** |
+| `Markers` | Snap to Time Markers |
+
+Holding `Alt` temporarily sets snap to `none`. Scroll speed slows for any snap other
+than `Line`. Note-value labels follow FL's table: `1/4 Step` = 64th, `1/2 Step` =
+32nd, `1/4 Beat` = 16th, `1/3 Beat` = triplets, `1/2 Beat` = 8th, `1 Beat` = quarter,
+`Bar` = whole note.
+
+**Already correct in Nota:** every numeric division in the snap ladder matches FL
+(step = 0.25 beats; `1/6 step` = 1/24; `1/4 step` = 1/16; `1/3 step` = 1/12;
+`1/2 step` = 1/8; beats 1/6, 1/4, 1/3, 1/2, 1, `Bar` = 4). Only the four
+non-numeric modes still need real behaviour.
 
 **Planned implementation** (spec PR-04-050…053):
-- Take the meter from the transport; replace the hardcoded `4` with a
-  signature-derived bar length.
-- Support compound meters **inline** — 6/8, 9/8, 12/8, 3/8, 6/4.
+- Take the meter from the **Pattern** (not the transport); replace the hardcoded `4`
+  with a signature-derived bar length, with a `Make unique` escape hatch.
+- Support compound meters **inline** — 6/8, 9/8, 12/8, 3/8, 6/4 — as a grid-only
+  change.
 - Render bar / beat / cell tiers, culling only *after* the hierarchy is defined and
   only by whole factors that preserve bar alignment.
-- Give `Line`, `Cell` and `Events` distinct semantics (`UNVERIFIED` — needs a
-  licensed-FL observation pass).
+- Give `Line` (zoom-adaptive resolution), `Cell` (snap to cell start), `Events`
+  (relative to events + ghosts) and `Markers` their distinct semantics, and decide
+  whether Nota needs its own Global snap panel for `Main` to read.
 
 ---
 
